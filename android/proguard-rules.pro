@@ -1,0 +1,2 @@
+-keep class ru.dgis.sdk.** {*;}
+-keep class kotlin.Unit {*;}

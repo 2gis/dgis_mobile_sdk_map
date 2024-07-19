@@ -1,0 +1,60 @@
+group = "ru.dgis.sdk.dgis_mobile_sdk_map"
+version = "1.0-SNAPSHOT"
+
+buildscript {
+    ext.kotlin_version = "1.8.20"
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:7.3.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+allprojects {
+    repositories {
+        maven {
+            url 'https://artifactory.2gis.dev/sdk-maven-release'
+        }        
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+android {
+    if (project.android.hasProperty("namespace")) {
+        namespace = "ru.dgis.sdk.dgis_mobile_sdk_map"
+    }
+
+    compileSdk = 34
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
+    }
+
+    defaultConfig {
+        minSdk = 21
+    }
+
+    buildTypes {
+        release {
+            consumerProguardFiles 'proguard-rules.pro'
+        }
+    }
+
+    dependencies {
+        implementation("ru.dgis.sdk.flutter_plugin:map:12.0.0-alpha.8") { changing = true }
+        implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlin_version")
+    }
+}

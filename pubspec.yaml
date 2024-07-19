@@ -1,0 +1,30 @@
+name: dgis_mobile_sdk_map
+description: "Map version of DGisMobileSDK for Flutter"
+version: 12.0.0-alpha.8
+repository: https://github.com/2gis/dgis_mobile_sdk_map
+
+environment:
+  sdk: '>=3.4.1 <4.0.0'
+  flutter: '>=3.22.0'
+
+dependencies:
+  async: ^2.11.0
+  ffi: ^2.1.2
+  flutter:
+    sdk: flutter
+  flutter_svg: ^2.0.10+1
+  meta: ^1.12.0
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+flutter:
+  assets:
+    - assets/icons/
+  plugin:
+    platforms:
+      android:
+        package: ru.dgis.sdk.android_jni
+        pluginClass: AndroidJniPlugin

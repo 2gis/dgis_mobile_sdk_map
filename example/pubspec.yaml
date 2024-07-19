@@ -1,0 +1,31 @@
+name: dgis_mobile_sdk_map_example
+description: "Demonstrates how to use the dgis_mobile_sdk_map plugin."
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.4.1 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+
+  dgis_mobile_sdk_map:
+    # When depending on this package from a real application you should use:
+    #   dgis_mobile_sdk_map: ^x.y.z
+    # See https://dart.dev/tools/pub/dependencies#version-constraints
+    # The example app is bundled with the plugin so we use a path dependency on
+    # the parent directory to use the current plugin's version.
+    path: ../
+  cupertino_icons: ^1.0.6
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  integration_test:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+flutter:
+  uses-material-design: true
+  # It is obligatory to add your key to assets directory of this example app
+  assets:
+    - assets/dgissdk.key # ignore: asset_does_not_exist
