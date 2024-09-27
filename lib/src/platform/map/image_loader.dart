@@ -14,37 +14,52 @@ class ImageLoader {
   /// Загрузить PNG изображение из assets.
   Future<sdk.Image> loadPngFromAsset(String name, int height, int width) async {
     final data = await rootBundle.load(name);
-    return _makeImage(data, sdk.ImageFormat.pNG, height, width);
+    return _makeImage(data, sdk.ImageFormat.png, height, width);
   }
 
   /// Загрузить PNG изображение из файла.
   Future<sdk.Image> loadPngFromFile(String path, int height, int width) async {
     final data = await _loadFromFile(path);
-    return _makeImage(data, sdk.ImageFormat.pNG, height, width);
+    return _makeImage(data, sdk.ImageFormat.png, height, width);
+  }
+
+  /// Загрузить PNG изображение из бинарных данных.
+  sdk.Image loadPngFromByteData(ByteData data, int height, int width) {
+    return _makeImage(data, sdk.ImageFormat.png, height, width);
   }
 
   /// Загрузить SVG изображение из assets.
   Future<sdk.Image> loadSVGFromAsset(String name) async {
     final data = await rootBundle.load(name);
-    return _makeImage(data, sdk.ImageFormat.sVG);
+    return _makeImage(data, sdk.ImageFormat.svg);
   }
 
   /// Загрузить SVG изображение из файла.
   Future<sdk.Image> loadSVGFromFile(String path) async {
     final data = await _loadFromFile(path);
-    return _makeImage(data, sdk.ImageFormat.sVG);
+    return _makeImage(data, sdk.ImageFormat.svg);
+  }
+
+  /// Загрузить SVG изображение из бинарных данных.
+  sdk.Image loadSVGFromByteData(ByteData data) {
+    return _makeImage(data, sdk.ImageFormat.svg);
   }
 
   /// Загрузить Lottie JSON из assets.
   Future<sdk.Image> loadLottieFromAsset(String name) async {
     final data = await rootBundle.load(name);
-    return _makeImage(data, sdk.ImageFormat.lOTTIE_JSON);
+    return _makeImage(data, sdk.ImageFormat.lottieJson);
   }
 
   /// Загрузить Lottie JSON из файла.
   Future<sdk.Image> loadLottieFromFile(String path) async {
     final data = await _loadFromFile(path);
-    return _makeImage(data, sdk.ImageFormat.lOTTIE_JSON);
+    return _makeImage(data, sdk.ImageFormat.lottieJson);
+  }
+
+  /// Загрузить Lottie JSON из бинарных данных.
+  sdk.Image loadLottieFromByteData(ByteData data) {
+    return _makeImage(data, sdk.ImageFormat.lottieJson);
   }
 
   Future<ByteData> _loadFromFile(String path) async {

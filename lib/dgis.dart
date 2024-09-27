@@ -31,7 +31,9 @@ export 'src/platform/map/map_appearance.dart';
 export 'src/platform/map/map_options.dart';
 export 'src/platform/map/map_theme.dart';
 export 'src/platform/map/touch_events_observer.dart';
-export 'src/widgets/directory/search.dart' show DgisSearchWidget;
+export 'src/widgets/directory/search.dart'
+    show DgisSearchWidget, SearchResultBuilder;
+export 'src/widgets/either.dart';
 export 'src/widgets/map/base_map_state.dart' show BaseMapWidgetState;
 export 'src/widgets/map/compass_widget.dart';
 export 'src/widgets/map/indoor_widget.dart';

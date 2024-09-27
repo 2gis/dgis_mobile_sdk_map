@@ -696,7 +696,6 @@ extension _MapBuilderApplyMapOptions on sdk.MapBuilder {
     if (options.sources != null) {
       options.sources!.forEach(builder.addSource);
     } else {
-      /// TODO. Для Full сборки нужно учесть, что нужно добавлять гибридный источник.
       builder.addSource(sdk.DgisSource.createDgisSource(sdkContext));
     }
 

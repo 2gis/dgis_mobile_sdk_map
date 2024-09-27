@@ -80,8 +80,8 @@ class AndroidJniPlugin: FlutterPlugin, MethodCallHandler {
 
         val initMethod = loggerClass.memberFunctions.find { it.name == "init" }
 
-        val logOptionsClass = Class.forName("ru.dgis.sdk.LogOptions").kotlin
-        val logLevelClass = Class.forName("ru.dgis.sdk.LogLevel").kotlin
+        val logOptionsClass = Class.forName("ru.dgis.sdk.platform.LogOptions").kotlin
+        val logLevelClass = Class.forName("ru.dgis.sdk.platform.LogLevel").kotlin
 
         val errorLevel = logLevelClass.java.enumConstants?.find { it.toString() == "ERROR" }
 

@@ -28,4 +28,5 @@ flutter:
   uses-material-design: true
   # It is obligatory to add your key to assets directory of this example app
   assets:
+    - assets/icons/
     - assets/dgissdk.key # ignore: asset_does_not_exist

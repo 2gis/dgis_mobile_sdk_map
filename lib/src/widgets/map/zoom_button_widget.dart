@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../map_widget_box_shadow.dart';
+import '../widget_shadows.dart';
 
 class ZoomButton extends StatefulWidget {
   final Color backgroundColor;
@@ -69,8 +69,8 @@ class _ZoomButtonState extends State<ZoomButton> {
               ? widget.pressedBackgroundColor
               : widget.backgroundColor,
           shape: BoxShape.circle,
-          boxShadow: [
-            MapWidgetBoxShadow(),
+          boxShadow: const [
+            WidgetShadows.mapWidgetBoxShadow,
           ],
         ),
         child: Center(

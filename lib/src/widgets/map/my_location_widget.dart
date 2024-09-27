@@ -5,7 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../generated/dart_bindings.dart' as sdk;
 import '../../util/plugin_name.dart';
-import '../map_widget_box_shadow.dart';
+import '../widget_shadows.dart';
 
 import 'map_widget_color_scheme.dart';
 import 'themed_map_controlling_widget.dart';
@@ -87,8 +87,8 @@ class _MyLocationWidgetState extends ThemedMapControllingWidgetState<
             decoration: BoxDecoration(
               color: colorScheme.surfaceColor,
               shape: BoxShape.circle,
-              boxShadow: [
-                MapWidgetBoxShadow(),
+              boxShadow: const [
+                WidgetShadows.mapWidgetBoxShadow,
               ],
             ),
             child: ValueListenableBuilder<sdk.CameraFollowState?>(

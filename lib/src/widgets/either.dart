@@ -1,5 +1,9 @@
 import '../generated/dart_bindings.dart' as sdk;
 
+/// Контейнер, содержащий в себе объект, являющийся или [sdk.DirectoryObject] (left), или
+/// [sdk.Suggest] (right).
+/// Используется в DgisSearchWidget для хранения списка подсказок / поисковой выдачи.
+/// Пример использования cм в DgisSearchWidget.
 typedef EitherDirectoryObjOrSuggest = Either<sdk.DirectoryObject, sdk.Suggest>;
 typedef DirectoryUIObj = Left<sdk.DirectoryObject, sdk.Suggest>;
 typedef SuggestUIObj = Right<sdk.DirectoryObject, sdk.Suggest>;

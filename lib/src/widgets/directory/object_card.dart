@@ -6,17 +6,22 @@ import '../either.dart';
 class SuggestionCard extends StatelessWidget {
   final VoidCallback onTap;
   final EitherDirectoryObjOrSuggest suggestion;
+  final TextStyle objectCardHighlightedTextStyle;
+  final TextStyle objectCardNormalTextStyle;
+  final Color objectCardTileColor;
 
   const SuggestionCard({
     required this.suggestion,
     required this.onTap,
+    required this.objectCardHighlightedTextStyle,
+    required this.objectCardNormalTextStyle,
+    required this.objectCardTileColor,
     super.key,
   });
 
   TextSpan _createHighlightedString(sdk.MarkedUpText text) {
-    const normalStyle = TextStyle(color: Colors.black);
-    const highlightStyle =
-        TextStyle(color: Colors.black, fontWeight: FontWeight.bold);
+    final normalStyle = objectCardNormalTextStyle;
+    final highlightStyle = objectCardHighlightedTextStyle;
 
     if (text.matchedParts.isEmpty || text.text.isEmpty) {
       return TextSpan(text: text.text, style: normalStyle);
@@ -64,25 +69,27 @@ class SuggestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      onTap: onTap,
-      leading: const Icon(Icons.search, color: Colors.black),
-      title: suggestion.fold(
-        (left) => Text(
-          left.title,
-          style: const TextStyle(color: Colors.black),
+    return Material(
+      child: ListTile(
+        onTap: onTap,
+        leading: const Icon(Icons.search, color: Colors.black),
+        title: suggestion.fold(
+          (left) => Text(
+            left.title,
+            style: objectCardNormalTextStyle,
+          ),
+          (right) => RichText(text: _createHighlightedString(right.title)),
         ),
-        (right) => RichText(text: _createHighlightedString(right.title)),
-      ),
-      subtitle: suggestion.fold(
-        (left) => Text(
-          left.subtitle,
-          style: const TextStyle(color: Colors.black),
+        subtitle: suggestion.fold(
+          (left) => Text(
+            left.subtitle,
+            style: objectCardNormalTextStyle,
+          ),
+          (right) => RichText(text: _createHighlightedString(right.subtitle)),
         ),
-        (right) => RichText(text: _createHighlightedString(right.subtitle)),
+        tileColor: objectCardTileColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       ),
-      tileColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
     );
   }
 }

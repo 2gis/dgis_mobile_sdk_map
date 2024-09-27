@@ -905,7 +905,11 @@ Context makeSystemContext(
 
 // MARK: - KeyFromAsset
 
-/** Ключ из asset-а. */
+/**
+ Ключ из asset-а.
+ Для Android это директория assets.
+ Для iOS это директория Bundle.main.
+*/
 class KeyFromAsset {
   /** Путь относительно корневой директории asset-ов. */
   final String path;
@@ -1275,11 +1279,12 @@ class HttpOptions {
   /**
    Путь к каталогу верхнего уровня для основного файлового хранилища HTTP кэша.
    Файловое хранилище будет находиться в подкаталоге http_cache в данном каталоге.
+   Если путь не указан, будет использоваться директория по умолчанию.
   */
   final String? cacheStoragePath;
   /**
-   Максимальный размер HTTP-кеша в байтах. Если не указан, по умолчанию максимальный
-   размер HTTP кэша составляет 300 Мб.
+   Максимальный размер HTTP-кеша в байтах.
+   Если не указан, по умолчанию максимальный размер HTTP кэша составляет 300 Мб.
   */
   final int? cacheMaxSize;
 
@@ -1360,24 +1365,14 @@ extension _CHttpOptionsRelease on _CHttpOptions {
 
 // MARK: - LogLevel
 
-/**
- Разрешённый уровень логирования SDK в журнал.
-
- В журнал попадают любые сообщения выше заданного уровня.
-*/
+/** Уровень логирования. */
 enum LogLevel {
-  /** Чрезмерно подробные вспомогательные сообщения. */
   verbose(0),
-  /** Информационные сообщения. */
   info(1),
-  /** Предупреждения. */
   warning(2),
-  /** Ошибки в использовании или окружении. */
   error(3),
-  /** Сообщения о событиях, свидетельствующих об ошибке программирования. */
-  fault(4),
-  /** Отсутствие каких-либо сообщений. */
-  disabled(5),
+  fatal(4),
+  off(5),
   ;
 
   const LogLevel(this.rawValue);
@@ -1499,9 +1494,9 @@ extension _DartTo_CLogSink on LogSink {
     _CLogSinkInstanceMap[instanceId] = _LogSink(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final write_CLogMessageFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLogMessage)>.listener(write_CLogMessageFunction);
     res._write_CLogMessage = write_CLogMessageFunctionCallable.nativeFunction;
@@ -1566,39 +1561,29 @@ extension _DartTo_COptional_CLogSink on LogSink? {
 }
 // MARK: - LogOptions
 
-/** Настройки ведения журнала SDK. */
+/** Настройки логирования. */
 class LogOptions {
-  /**
-   Минимальный уровень ошибок, попадающих в системный журнал.
-  
-   По умолчанию `warning`, то есть все предупреждения и более серьёзные
-   события.
-  */
-  final LogLevel logLevel;
-  /**
-   Минимальный уровень ошибок, попадающих в пользовательский приемник логирования.
-  
-   По умолчанию `warning`, то есть все предупреждения и более серьёзные
-   события.
-  */
-  final LogLevel customLogLevel;
+  /** Уровень логирования в системный лог. */
+  final LogLevel systemLevel;
+  /** Уровень логирования в пользовательский приемник. */
+  final LogLevel customLevel;
   /** Пользовательский приемник логирования. */
   final LogSink? customSink;
 
   const LogOptions({
-    this.logLevel = LogLevel.warning,
-    this.customLogLevel = LogLevel.warning,
+    this.systemLevel = LogLevel.warning,
+    this.customLevel = LogLevel.warning,
     this.customSink = null
   });
 
   LogOptions copyWith({
-    LogLevel? logLevel,
-    LogLevel? customLogLevel,
+    LogLevel? systemLevel,
+    LogLevel? customLevel,
     Optional<LogSink?>? customSink
   }) {
     return LogOptions(
-      logLevel: logLevel ?? this.logLevel,
-      customLogLevel: customLogLevel ?? this.customLogLevel,
+      systemLevel: systemLevel ?? this.systemLevel,
+      customLevel: customLevel ?? this.customLevel,
       customSink: customSink != null ? customSink.value : this.customSink
     );
   }
@@ -1606,20 +1591,20 @@ class LogOptions {
   bool operator ==(Object other) =>
     identical(this, other) || other is LogOptions &&
     other.runtimeType == runtimeType &&
-    other.logLevel == logLevel &&
-    other.customLogLevel == customLogLevel &&
+    other.systemLevel == systemLevel &&
+    other.customLevel == customLevel &&
     other.customSink == customSink;
 
   @override
   int get hashCode {
-    return Object.hash(logLevel, customLogLevel, customSink);
+    return Object.hash(systemLevel, customLevel, customSink);
   }
 
 }
 final class _CLogOptions extends ffi.Struct {
-  external _CLogLevel logLevel;
+  external _CLogLevel systemLevel;
 
-  external _CLogLevel customLogLevel;
+  external _CLogLevel customLevel;
 
   external _COptional_CLogSink customSink;
 
@@ -1629,8 +1614,8 @@ final class _CLogOptions extends ffi.Struct {
 extension _CLogOptionsToDart on _CLogOptions {
   LogOptions _toDart() {
     return LogOptions(
-      logLevel: this.logLevel._toDart(),
-      customLogLevel: this.customLogLevel._toDart(),
+      systemLevel: this.systemLevel._toDart(),
+      customLevel: this.customLevel._toDart(),
       customSink: this.customSink._toDart()
     );
   }
@@ -1639,8 +1624,8 @@ extension _CLogOptionsToDart on _CLogOptions {
 extension _DartTo_CLogOptions on LogOptions {
   _CLogOptions _copyFromDartTo_CLogOptions() {
     final res = _CLogOptionsMakeDefault();
-    res.logLevel = this.logLevel._copyFromDartTo_CLogLevel();
-    res.customLogLevel = this.customLogLevel._copyFromDartTo_CLogLevel();
+    res.systemLevel = this.systemLevel._copyFromDartTo_CLogLevel();
+    res.customLevel = this.customLevel._copyFromDartTo_CLogLevel();
     res.customSink = this.customSink._copyFromDartTo_COptional_CLogSink();
     return res;
   }
@@ -1681,7 +1666,7 @@ class _LogSinkCpp extends LogSink implements ffi.Finalizable {
   // MARK: _LogSinkCpp: Methods
 
   /**
-   Запись в журнал.
+   Запись в лог.
    Метод может вызываться на произвольном потоке.
   */
   void write(
@@ -1731,7 +1716,7 @@ class LogMessage {
   final LogLevel level;
   /** Содержимое сообщения. */
   final String text;
-  /** Путь до файла (полный или относительный), из которого произведена запись. */
+  /** Имя файла, в котором было записано сообщение. */
   final String file;
   /** Номер строки, в которой было записано сообщение. */
   final int line;
@@ -1821,7 +1806,11 @@ final class _CEmpty extends ffi.Struct {
 	
 // MARK: - VendorConfigFromAsset
 
-/** Переопределение настроек SDK через указание пути к asset-у приложения. */
+/**
+ Переопределение настроек SDK через указание пути к asset-у приложения.
+ Для Android это директория assets.
+ Для iOS это директория Bundle.main.
+*/
 class VendorConfigFromAsset {
   /** Путь относительно корневой директории asset-ов. */
   final String path;
@@ -2257,9 +2246,9 @@ extension _DartTo_CLocationProvider on LocationProvider {
     _CLocationProviderInstanceMap[instanceId] = _LocationProvider(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final lastLocationFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CLocation)>>)>.listener(lastLocationFunction);
     res._lastLocation = lastLocationFunctionCallable.nativeFunction;
@@ -3342,7 +3331,9 @@ extension _DartTo_CArray_CLocation on List<Location> {
   _CArray_CLocation _copyFromDartTo_CArray_CLocation() {
     final cArray = _CArray_CLocationmakeEmpty();
     forEach((item) {
-        _CArray_CLocationaddElement(cArray, item._copyFromDartTo_CLocation());
+        final cItem = item._copyFromDartTo_CLocation();
+        _CArray_CLocationaddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -3564,9 +3555,9 @@ extension _DartTo_CHeadingProvider on HeadingProvider {
     _CHeadingProviderInstanceMap[instanceId] = _HeadingProvider(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CHeadingNotifier, _COptional_CHeadingAvailableNotifier)>.listener(setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierFunction);
     res._setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifier = setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierFunctionCallable.nativeFunction;
@@ -4542,7 +4533,9 @@ extension _DartTo_CArray_CLevelInfo on List<LevelInfo> {
   _CArray_CLevelInfo _copyFromDartTo_CArray_CLevelInfo() {
     final cArray = _CArray_CLevelInfomakeEmpty();
     forEach((item) {
-        _CArray_CLevelInfoaddElement(cArray, item._copyFromDartTo_CLevelInfo());
+        final cItem = item._copyFromDartTo_CLevelInfo();
+        _CArray_CLevelInfoaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -5494,7 +5487,9 @@ extension _DartTo_CArray_CDynamicFilter on List<DynamicFilter> {
   _CArray_CDynamicFilter _copyFromDartTo_CArray_CDynamicFilter() {
     final cArray = _CArray_CDynamicFiltermakeEmpty();
     forEach((item) {
-        _CArray_CDynamicFilteraddElement(cArray, item._copyFromDartTo_CDynamicFilter());
+        final cItem = item._copyFromDartTo_CDynamicFilter();
+        _CArray_CDynamicFilteraddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -5602,7 +5597,9 @@ extension _DartTo_CArray_CGeoPoint on List<GeoPoint> {
   _CArray_CGeoPoint _copyFromDartTo_CArray_CGeoPoint() {
     final cArray = _CArray_CGeoPointmakeEmpty();
     forEach((item) {
-        _CArray_CGeoPointaddElement(cArray, item._copyFromDartTo_CGeoPoint());
+        final cItem = item._copyFromDartTo_CGeoPoint();
+        _CArray_CGeoPointaddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -5643,7 +5640,9 @@ extension _DartTo_CArray_CArray_CGeoPoint on List<List<GeoPoint>> {
   _CArray_CArray_CGeoPoint _copyFromDartTo_CArray_CArray_CGeoPoint() {
     final cArray = _CArray_CArray_CGeoPointmakeEmpty();
     forEach((item) {
-        _CArray_CArray_CGeoPointaddElement(cArray, item._copyFromDartTo_CArray_CGeoPoint());
+        final cItem = item._copyFromDartTo_CArray_CGeoPoint();
+        _CArray_CArray_CGeoPointaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -5752,7 +5751,9 @@ extension _DartTo_CArray_CApartmentRange on List<ApartmentRange> {
   _CArray_CApartmentRange _copyFromDartTo_CArray_CApartmentRange() {
     final cArray = _CArray_CApartmentRangemakeEmpty();
     forEach((item) {
-        _CArray_CApartmentRangeaddElement(cArray, item._copyFromDartTo_CApartmentRange());
+        final cItem = item._copyFromDartTo_CApartmentRange();
+        _CArray_CApartmentRangeaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -5937,9 +5938,9 @@ extension _CEntranceInfoRelease on _CEntranceInfo {
 /** Тип фильтра */
 enum FilterType {
   /** Фильтр задаёт порядок сортировки результата поиска. */
-  sORT(0),
+  sort(0),
   /** Фильтр указывает на наличие определенного признака у объекта в результатах поиска. */
-  fILTER(1),
+  filter(1),
   ;
 
   const FilterType(this.rawValue);
@@ -6182,6 +6183,350 @@ extension _DartTo_CFormattingType on FormattingType {
   }
 }
 	
+// MARK: - Aggregate
+
+/** Обобщенное описание станции зарядки автомобилей. */
+class Aggregate {
+  /** Количество доступных коннекторов. */
+  final int connectorsFree;
+  /** Общее количество коннекторов (кроме недоступных). */
+  final int connectorsTotal;
+  /** Статус активности. true, если есть хотя бы один доступный, зарезервированный или на зарядке коннектор. */
+  final bool isActive;
+  /** Статус занятости. true, если половина или более коннекторов заняты. */
+  final bool isBusy;
+  /** Максимальная мощность из всех коннекторов. */
+  final int power;
+
+  const Aggregate({
+    required this.connectorsFree,
+    required this.connectorsTotal,
+    required this.isActive,
+    required this.isBusy,
+    required this.power
+  });
+
+  Aggregate copyWith({
+    int? connectorsFree,
+    int? connectorsTotal,
+    bool? isActive,
+    bool? isBusy,
+    int? power
+  }) {
+    return Aggregate(
+      connectorsFree: connectorsFree ?? this.connectorsFree,
+      connectorsTotal: connectorsTotal ?? this.connectorsTotal,
+      isActive: isActive ?? this.isActive,
+      isBusy: isBusy ?? this.isBusy,
+      power: power ?? this.power
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is Aggregate &&
+    other.runtimeType == runtimeType &&
+    other.connectorsFree == connectorsFree &&
+    other.connectorsTotal == connectorsTotal &&
+    other.isActive == isActive &&
+    other.isBusy == isBusy &&
+    other.power == power;
+
+  @override
+  int get hashCode {
+    return Object.hash(connectorsFree, connectorsTotal, isActive, isBusy, power);
+  }
+
+}
+final class _CAggregate extends ffi.Struct {
+  @ffi.Uint16()
+  external int connectorsFree;
+
+  @ffi.Uint16()
+  external int connectorsTotal;
+
+  @ffi.Bool()
+  external bool isActive;
+
+  @ffi.Bool()
+  external bool isBusy;
+
+  @ffi.Uint16()
+  external int power;
+
+}
+// MARK: - Aggregate <-> _CAggregate
+
+extension _CAggregateToDart on _CAggregate {
+  Aggregate _toDart() {
+    return Aggregate(
+      connectorsFree: this.connectorsFree,
+      connectorsTotal: this.connectorsTotal,
+      isActive: this.isActive,
+      isBusy: this.isBusy,
+      power: this.power
+    );
+  }
+}
+
+extension _DartTo_CAggregate on Aggregate {
+  _CAggregate _copyFromDartTo_CAggregate() {
+    final res = _CAggregateMakeDefault();
+    res.connectorsFree = this.connectorsFree;
+    res.connectorsTotal = this.connectorsTotal;
+    res.isActive = this.isActive;
+    res.isBusy = this.isBusy;
+    res.power = this.power;
+    return res;
+  }
+}
+extension _CAggregateRelease on _CAggregate {
+  void _releaseIntermediate() {
+  }
+}
+
+// MARK: - StatusType
+
+/** Статус коннектора. */
+enum StatusType {
+  /** Доступно. */
+  available(0),
+  /** Зарядка. */
+  charging(1),
+  /** Зарезервировано. */
+  reserved(2),
+  /** Недоступно. */
+  unavailable(3),
+  /** Неизвестно. */
+  unknown(4),
+  ;
+
+  const StatusType(this.rawValue);
+  final int rawValue;
+
+  static StatusType getByValue(int value) {
+    return StatusType.values.firstWhere((x) => x.rawValue == value);
+  }
+}
+
+
+final class _CStatusType extends ffi.Struct {
+  @ffi.Uint32()
+  external int rawValue;
+}
+
+extension _CStatusTypeBasicFunctions on _CStatusType {
+  void _releaseIntermediate() {
+  }
+}
+
+extension _CStatusTypeToDart on _CStatusType {
+  StatusType _toDart() {
+    return StatusType.getByValue(this.rawValue);
+  }
+}
+
+extension _DartTo_CStatusType on StatusType {
+  _CStatusType _copyFromDartTo_CStatusType() {
+    return _CStatusTypeMakeDefault()..rawValue = this.rawValue;
+  }
+}
+	
+// MARK: - Connector
+
+class Connector {
+  /** Мощность зарядки в кВт. */
+  final int power;
+  /** Стоимость за один кВт·ч. */
+  final int price;
+  /** Статус. */
+  final StatusType status;
+  /** Тип коннектора. */
+  final String type;
+
+  const Connector({
+    required this.power,
+    required this.price,
+    required this.status,
+    required this.type
+  });
+
+  Connector copyWith({
+    int? power,
+    int? price,
+    StatusType? status,
+    String? type
+  }) {
+    return Connector(
+      power: power ?? this.power,
+      price: price ?? this.price,
+      status: status ?? this.status,
+      type: type ?? this.type
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is Connector &&
+    other.runtimeType == runtimeType &&
+    other.power == power &&
+    other.price == price &&
+    other.status == status &&
+    other.type == type;
+
+  @override
+  int get hashCode {
+    return Object.hash(power, price, status, type);
+  }
+
+}
+final class _CConnector extends ffi.Struct {
+  @ffi.Uint16()
+  external int power;
+
+  @ffi.Uint16()
+  external int price;
+
+  external _CStatusType status;
+
+  external _CString type;
+
+}
+// MARK: - Connector <-> _CConnector
+
+extension _CConnectorToDart on _CConnector {
+  Connector _toDart() {
+    return Connector(
+      power: this.power,
+      price: this.price,
+      status: this.status._toDart(),
+      type: this.type._toDart()
+    );
+  }
+}
+
+extension _DartTo_CConnector on Connector {
+  _CConnector _copyFromDartTo_CConnector() {
+    final res = _CConnectorMakeDefault();
+    res.power = this.power;
+    res.price = this.price;
+    res.status = this.status._copyFromDartTo_CStatusType();
+    res.type = this.type._copyFromDartTo_CString();
+    return res;
+  }
+}
+extension _CConnectorRelease on _CConnector {
+  void _releaseIntermediate() {
+    type._releaseIntermediate();
+  }
+}
+
+// MARK: - List<Connector> <-> _CArray_CConnector
+
+final class _CArray_CConnector extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> _impl;
+}
+
+extension _CArray_CConnectorToDart on _CArray_CConnector {
+  List<Connector> _toDart() {
+    return _fillFromC();
+  }
+}
+
+extension _DartTo_CArray_CConnector on List<Connector> {
+  _CArray_CConnector _copyFromDartTo_CArray_CConnector() {
+    final cArray = _CArray_CConnectormakeEmpty();
+    forEach((item) {
+        final cItem = item._copyFromDartTo_CConnector();
+        _CArray_CConnectoraddElement(cArray, cItem);
+        cItem._releaseIntermediate();
+    });
+    return cArray;
+  }
+}
+
+extension _CArray_CConnectorBasicFunctions on _CArray_CConnector {
+  void _releaseIntermediate() {
+    _CArray_CConnector_release(this);
+  }
+
+  static final _listToFill = <Connector>[];
+
+  static void _iterate(_CConnector item) {
+    _listToFill.add(item._toDart());
+  }
+
+  List<Connector> _fillFromC() {
+    _forEach_CArray_CConnector(this, ffi.Pointer.fromFunction<ffi.Void Function(_CConnector)>(_iterate));
+    final result = List<Connector>.from(_listToFill);
+    _listToFill.clear();
+    return result;
+  }
+}
+	
+// MARK: - ChargingStation
+
+/** Аттрибуты для электрозаправок. */
+class ChargingStation {
+  final Aggregate aggregate;
+  final List<Connector> connectors;
+
+  const ChargingStation({
+    required this.aggregate,
+    required this.connectors
+  });
+
+  ChargingStation copyWith({
+    Aggregate? aggregate,
+    List<Connector>? connectors
+  }) {
+    return ChargingStation(
+      aggregate: aggregate ?? this.aggregate,
+      connectors: connectors ?? this.connectors
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is ChargingStation &&
+    other.runtimeType == runtimeType &&
+    other.aggregate == aggregate &&
+    other.connectors == connectors;
+
+  @override
+  int get hashCode {
+    return Object.hash(aggregate, connectors);
+  }
+
+}
+final class _CChargingStation extends ffi.Struct {
+  external _CAggregate aggregate;
+
+  external _CArray_CConnector connectors;
+
+}
+// MARK: - ChargingStation <-> _CChargingStation
+
+extension _CChargingStationToDart on _CChargingStation {
+  ChargingStation _toDart() {
+    return ChargingStation(
+      aggregate: this.aggregate._toDart(),
+      connectors: this.connectors._toDart()
+    );
+  }
+}
+
+extension _DartTo_CChargingStation on ChargingStation {
+  _CChargingStation _copyFromDartTo_CChargingStation() {
+    final res = _CChargingStationMakeDefault();
+    res.aggregate = this.aggregate._copyFromDartTo_CAggregate();
+    res.connectors = this.connectors._copyFromDartTo_CArray_CConnector();
+    return res;
+  }
+}
+extension _CChargingStationRelease on _CChargingStation {
+  void _releaseIntermediate() {
+    connectors._releaseIntermediate();
+  }
+}
+
 // MARK: - ItemMarkerInfo
 
 /** Идентификатор объекта и его координаты. */
@@ -6199,6 +6544,12 @@ class ItemMarkerInfo implements ffi.Finalizable {
   FloorInfo? get floorInfo {
     _COptional_CFloorInfo res = _CItemMarkerInfo_floorInfo(_CItemMarkerInfoMakeDefault().._impl=_self);
     return res._toDart();
+  }
+  String? get title {
+    _COptional_CString res = _CItemMarkerInfo_title(_CItemMarkerInfoMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
   }
 
   static final _finalizer = ffi.NativeFinalizer(_CItemMarkerInfo_releasePtr);
@@ -6461,30 +6812,56 @@ extension _DartTo_COptional_CFloorInfo on FloorInfo? {
 enum ObjectType {
   /** Административная единица. */
   admDiv(0),
+  /** Город. */
+  admDivCity(1),
+  /** Страна. */
+  admDivCountry(2),
+  /** Район. */
+  admDivDistrict(3),
+  /** Район области. */
+  admDivDistrictArea(4),
+  /** Округ. */
+  admDivDivision(5),
+  /** Жилмассив, микрорайон. */
+  admDivLivingArea(6),
+  /** Разные площадные объекты: парки, пляжи, территории баз отдыха, озёра и прочие места. */
+  admDivPlace(7),
+  /** Регион (область/край/республика и т.п.). */
+  admDivRegion(8),
+  /** Населённый пункт (деревня, посёлок и т.п.). */
+  admDivSettlement(9),
   /** Достопримечательность. */
-  attraction(1),
-  /** Филиал организации. */
-  branch(2),
+  attraction(10),
+  /** Компания. */
+  branch(11),
   /** Здание. */
-  building(3),
-  /** Глобальная координата. */
-  coordinates(4),
+  building(12),
+  /** Глобальная координата в системе координат WGS84 в формате lon, lat. */
+  coordinates(13),
   /** Перекрёсток. */
-  crossroad(5),
+  crossroad(14),
+  /** Проход/проезд. */
+  gate(15),
+  /** Знак километра. */
+  kilometerRoadSign(16),
   /** Парковка. */
-  parking(6),
+  parking(17),
   /** Дорога. */
-  road(7),
-  /** Маршрут общественного транспорта. */
-  route(8),
-  /** Остановка. */
-  station(9),
+  road(18),
+  /** Маршрут. */
+  route(19),
+  /** Остановки или станция общественного транспорта. */
+  station(20),
   /** Вход на станцию. */
-  stationEntrance(10),
+  stationEntrance(21),
+  /** Станция метро. */
+  stationMetro(22),
+  /** Остановочная платформа. */
+  stationPlatform(23),
   /** Улица. */
-  street(11),
+  street(24),
   /** На случай получения неожиданного типа. */
-  unknown(12),
+  unknown(25),
   ;
 
   const ObjectType(this.rawValue);
@@ -6534,7 +6911,9 @@ extension _DartTo_CArray_CArray_CWeekTimeInterval on List<List<WeekTimeInterval>
   _CArray_CArray_CWeekTimeInterval _copyFromDartTo_CArray_CArray_CWeekTimeInterval() {
     final cArray = _CArray_CArray_CWeekTimeIntervalmakeEmpty();
     forEach((item) {
-        _CArray_CArray_CWeekTimeIntervaladdElement(cArray, item._copyFromDartTo_CArray_CWeekTimeInterval());
+        final cItem = item._copyFromDartTo_CArray_CWeekTimeInterval();
+        _CArray_CArray_CWeekTimeIntervaladdElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -6642,7 +7021,9 @@ extension _DartTo_CArray_CWeekTimeInterval on List<WeekTimeInterval> {
   _CArray_CWeekTimeInterval _copyFromDartTo_CArray_CWeekTimeInterval() {
     final cArray = _CArray_CWeekTimeIntervalmakeEmpty();
     forEach((item) {
-        _CArray_CWeekTimeIntervaladdElement(cArray, item._copyFromDartTo_CWeekTimeInterval());
+        final cItem = item._copyFromDartTo_CWeekTimeInterval();
+        _CArray_CWeekTimeIntervaladdElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -6859,7 +7240,9 @@ extension _DartTo_CArray_CSpecialSpace on List<SpecialSpace> {
   _CArray_CSpecialSpace _copyFromDartTo_CArray_CSpecialSpace() {
     final cArray = _CArray_CSpecialSpacemakeEmpty();
     forEach((item) {
-        _CArray_CSpecialSpaceaddElement(cArray, item._copyFromDartTo_CSpecialSpace());
+        final cItem = item._copyFromDartTo_CSpecialSpace();
+        _CArray_CSpecialSpaceaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -8199,7 +8582,9 @@ extension _DartTo_CArray_CAddressAdmDiv on List<AddressAdmDiv> {
   _CArray_CAddressAdmDiv _copyFromDartTo_CArray_CAddressAdmDiv() {
     final cArray = _CArray_CAddressAdmDivmakeEmpty();
     forEach((item) {
-        _CArray_CAddressAdmDivaddElement(cArray, item._copyFromDartTo_CAddressAdmDiv());
+        final cItem = item._copyFromDartTo_CAddressAdmDiv();
+        _CArray_CAddressAdmDivaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -8240,7 +8625,9 @@ extension _DartTo_CArray_CAddressComponent on List<AddressComponent> {
   _CArray_CAddressComponent _copyFromDartTo_CArray_CAddressComponent() {
     final cArray = _CArray_CAddressComponentmakeEmpty();
     forEach((item) {
-        _CArray_CAddressComponentaddElement(cArray, item._copyFromDartTo_CAddressComponent());
+        final cItem = item._copyFromDartTo_CAddressComponent();
+        _CArray_CAddressComponentaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -8545,6 +8932,13 @@ class DirectoryObject implements ffi.Finalizable {
     res._releaseIntermediate();
     return t;
   }
+  /** Аттрибуты для электрозаправки. */
+  ChargingStation? get chargingStation {
+    _COptional_CChargingStation res = _CDirectoryObject_chargingStation(_CDirectoryObjectMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
 
   static final _finalizer = ffi.NativeFinalizer(_CDirectoryObject_releasePtr);
 
@@ -8626,7 +9020,9 @@ extension _DartTo_CArray_CObjectType on List<ObjectType> {
   _CArray_CObjectType _copyFromDartTo_CArray_CObjectType() {
     final cArray = _CArray_CObjectTypemakeEmpty();
     forEach((item) {
-        _CArray_CObjectTypeaddElement(cArray, item._copyFromDartTo_CObjectType());
+        final cItem = item._copyFromDartTo_CObjectType();
+        _CArray_CObjectTypeaddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -8739,7 +9135,9 @@ extension _DartTo_CArray_CAttribute on List<Attribute> {
   _CArray_CAttribute _copyFromDartTo_CArray_CAttribute() {
     final cArray = _CArray_CAttributemakeEmpty();
     forEach((item) {
-        _CArray_CAttributeaddElement(cArray, item._copyFromDartTo_CAttribute());
+        final cItem = item._copyFromDartTo_CAttribute();
+        _CArray_CAttributeaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -8888,7 +9286,9 @@ extension _DartTo_CArray_CContactInfo on List<ContactInfo> {
   _CArray_CContactInfo _copyFromDartTo_CArray_CContactInfo() {
     final cArray = _CArray_CContactInfomakeEmpty();
     forEach((item) {
-        _CArray_CContactInfoaddElement(cArray, item._copyFromDartTo_CContactInfo());
+        final cItem = item._copyFromDartTo_CContactInfo();
+        _CArray_CContactInfoaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -9073,7 +9473,9 @@ extension _DartTo_CArray_CEntranceInfo on List<EntranceInfo> {
   _CArray_CEntranceInfo _copyFromDartTo_CArray_CEntranceInfo() {
     final cArray = _CArray_CEntranceInfomakeEmpty();
     forEach((item) {
-        _CArray_CEntranceInfoaddElement(cArray, item._copyFromDartTo_CEntranceInfo());
+        final cItem = item._copyFromDartTo_CEntranceInfo();
+        _CArray_CEntranceInfoaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -9127,6 +9529,42 @@ extension _DartTo_COptional_CTradeLicense on TradeLicense? {
     final cOptional = _COptional_CTradeLicenseMakeDefault();
     if (this != null) {
       cOptional.value = this!._copyFromDartTo_CTradeLicense();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
+// MARK: - ChargingStation? <-> _COptional_CChargingStation
+
+final class _COptional_CChargingStation extends ffi.Struct {
+  
+  external _CChargingStation value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CChargingStationBasicFunctions on _COptional_CChargingStation {
+  void _releaseIntermediate() {
+    _COptional_CChargingStation_release(this);
+  }
+}
+
+extension _COptional_CChargingStationToDart on _COptional_CChargingStation {
+  ChargingStation? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CChargingStation on ChargingStation? {
+  _COptional_CChargingStation _copyFromDartTo_COptional_CChargingStation() {
+    final cOptional = _COptional_CChargingStationMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CChargingStation();
       cOptional.hasValue = true;
     } else {
       cOptional.hasValue = false;
@@ -9245,7 +9683,9 @@ extension _DartTo_CArray_CDirectoryObject on List<DirectoryObject> {
   _CArray_CDirectoryObject _copyFromDartTo_CArray_CDirectoryObject() {
     final cArray = _CArray_CDirectoryObjectmakeEmpty();
     forEach((item) {
-        _CArray_CDirectoryObjectaddElement(cArray, item._copyFromDartTo_CDirectoryObject());
+        final cItem = item._copyFromDartTo_CDirectoryObject();
+        _CArray_CDirectoryObjectaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -9461,11 +9901,11 @@ extension _DartTo_CError on NativeException {
 /** Тип виджета. */
 enum WidgetType {
   /** Одиночный чекбокс. */
-  cHECKBOX(0),
+  checkbox(0),
   /** Группа элементов, каждый из которых может быть отмечен независимо или сгруппирован в */
-  cHECKABLE_ITEM_GROUP(1),
+  checkableItemGroup(1),
   /** Представление непрерывного или дискретного набора упорядоченных значений. */
-  rANGE(2),
+  range(2),
   ;
 
   const WidgetType(this.rawValue);
@@ -9738,7 +10178,9 @@ extension _DartTo_CArray_CString on List<String> {
   _CArray_CString _copyFromDartTo_CArray_CString() {
     final cArray = _CArray_CStringmakeEmpty();
     forEach((item) {
-        _CArray_CStringaddElement(cArray, item._copyFromDartTo_CString());
+        final cItem = item._copyFromDartTo_CString();
+        _CArray_CStringaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -9768,9 +10210,9 @@ extension _CArray_CStringBasicFunctions on _CArray_CString {
 /** Тип отмечаемого элемента. */
 enum CheckableItemType {
   /** Простой элемент. */
-  sIMPLE(0),
+  simple(0),
   /** Набор элементов, работающих как радио-группа. */
-  gROUP(1),
+  group(1),
   ;
 
   const CheckableItemType(this.rawValue);
@@ -10069,7 +10511,9 @@ extension _DartTo_CArray_CCheckableItem on List<CheckableItem> {
   _CArray_CCheckableItem _copyFromDartTo_CArray_CCheckableItem() {
     final cArray = _CArray_CCheckableItemmakeEmpty();
     forEach((item) {
-        _CArray_CCheckableItemaddElement(cArray, item._copyFromDartTo_CCheckableItem());
+        final cItem = item._copyFromDartTo_CCheckableItem();
+        _CArray_CCheckableItemaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -10269,7 +10713,9 @@ extension _DartTo_CArray_CCheckableGroupedItem on List<CheckableGroupedItem> {
   _CArray_CCheckableGroupedItem _copyFromDartTo_CArray_CCheckableGroupedItem() {
     final cArray = _CArray_CCheckableGroupedItemmakeEmpty();
     forEach((item) {
-        _CArray_CCheckableGroupedItemaddElement(cArray, item._copyFromDartTo_CCheckableGroupedItem());
+        final cItem = item._copyFromDartTo_CCheckableGroupedItem();
+        _CArray_CCheckableGroupedItemaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -10498,7 +10944,9 @@ extension _DartTo_CArray_COrderedValue on List<OrderedValue> {
   _CArray_COrderedValue _copyFromDartTo_CArray_COrderedValue() {
     final cArray = _CArray_COrderedValuemakeEmpty();
     forEach((item) {
-        _CArray_COrderedValueaddElement(cArray, item._copyFromDartTo_COrderedValue());
+        final cItem = item._copyFromDartTo_COrderedValue();
+        _CArray_COrderedValueaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -11217,7 +11665,9 @@ extension _DartTo_CArray_CItemMarkerInfo on List<ItemMarkerInfo> {
   _CArray_CItemMarkerInfo _copyFromDartTo_CArray_CItemMarkerInfo() {
     final cArray = _CArray_CItemMarkerInfomakeEmpty();
     forEach((item) {
-        _CArray_CItemMarkerInfoaddElement(cArray, item._copyFromDartTo_CItemMarkerInfo());
+        final cItem = item._copyFromDartTo_CItemMarkerInfo();
+        _CArray_CItemMarkerInfoaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -11294,7 +11744,9 @@ extension _DartTo_CArray_CFuture_CArray_CUIMarkerInfo on List<CancelableOperatio
   _CArray_CFuture_CArray_CUIMarkerInfo _copyFromDartTo_CArray_CFuture_CArray_CUIMarkerInfo() {
     final cArray = _CArray_CFuture_CArray_CUIMarkerInfomakeEmpty();
     forEach((item) {
-        _CArray_CFuture_CArray_CUIMarkerInfoaddElement(cArray, item._copyFromDartTo_CFuture_CArray_CUIMarkerInfo());
+        final cItem = item._copyFromDartTo_CFuture_CArray_CUIMarkerInfo();
+        _CArray_CFuture_CArray_CUIMarkerInfoaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -11436,7 +11888,9 @@ extension _DartTo_CArray_CUIMarkerInfo on List<UIMarkerInfo> {
   _CArray_CUIMarkerInfo _copyFromDartTo_CArray_CUIMarkerInfo() {
     final cArray = _CArray_CUIMarkerInfomakeEmpty();
     forEach((item) {
-        _CArray_CUIMarkerInfoaddElement(cArray, item._copyFromDartTo_CUIMarkerInfo());
+        final cItem = item._copyFromDartTo_CUIMarkerInfo();
+        _CArray_CUIMarkerInfoaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -11477,7 +11931,9 @@ extension _DartTo_CArray_CDgisObjectId on List<DgisObjectId> {
   _CArray_CDgisObjectId _copyFromDartTo_CArray_CDgisObjectId() {
     final cArray = _CArray_CDgisObjectIdmakeEmpty();
     forEach((item) {
-        _CArray_CDgisObjectIdaddElement(cArray, item._copyFromDartTo_CDgisObjectId());
+        final cItem = item._copyFromDartTo_CDgisObjectId();
+        _CArray_CDgisObjectIdaddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -11518,7 +11974,9 @@ extension _DartTo_CArray_CWidget on List<Widget> {
   _CArray_CWidget _copyFromDartTo_CArray_CWidget() {
     final cArray = _CArray_CWidgetmakeEmpty();
     forEach((item) {
-        _CArray_CWidgetaddElement(cArray, item._copyFromDartTo_CWidget());
+        final cItem = item._copyFromDartTo_CWidget();
+        _CArray_CWidgetaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -12085,7 +12543,9 @@ extension _DartTo_CArray_CMarkedUpTextSpan on List<MarkedUpTextSpan> {
   _CArray_CMarkedUpTextSpan _copyFromDartTo_CArray_CMarkedUpTextSpan() {
     final cArray = _CArray_CMarkedUpTextSpanmakeEmpty();
     forEach((item) {
-        _CArray_CMarkedUpTextSpanaddElement(cArray, item._copyFromDartTo_CMarkedUpTextSpan());
+        final cItem = item._copyFromDartTo_CMarkedUpTextSpan();
+        _CArray_CMarkedUpTextSpanaddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -12185,44 +12645,72 @@ extension _CMarkedUpTextRelease on _CMarkedUpText {
 
 /** Тип поисковой подсказки. */
 enum SuggestedType {
-  /** Административная единица. */
-  admDiv(0),
+  /** Город. */
+  admDivCity(0),
+  /** Страна. */
+  admDivCountry(1),
+  /** Район. */
+  admDivDistrict(2),
+  /** Район области. */
+  admDivDistrictArea(3),
+  /** Округ. */
+  admDivDivision(4),
+  /** Жилмассив, микрорайон. */
+  admDivLivingArea(5),
+  /** Разные площадные объекты: парки, пляжи, территории баз отдыха, озёра и прочие места. */
+  admDivPlace(6),
+  /** Регион (область/край/республика и т.п.). */
+  admDivRegion(7),
+  /** Населённый пункт (деревня, посёлок и т.п.). */
+  admDivSettlement(8),
   /** Достопримечательность. */
-  attraction(1),
+  attraction(9),
   /** Дополнительный атрибут. */
-  attribute(2),
-  /** Филиал организации. */
-  branch(3),
+  attribute(10),
+  /** Компания. */
+  branch(11),
   /** Здание. */
-  building(4),
-  /** Глобальная координата. */
-  coordinates(5),
+  building(12),
+  /** Глобальная координата в системе координат WGS84 в формате lon, lat. */
+  coordinates(13),
   /** Перекрёсток. */
-  crossroad(6),
-  /** Область. */
-  districtArea(7),
+  crossroad(14),
+  /** Знак километра. */
+  kilometerRoadSign(15),
+  /** Наименования товаров. */
+  marketAttribute(16),
+  /** Бренд товаров. */
+  marketBrand(17),
+  /** Категории товаров. Требует наличия market.suggestor_category. */
+  marketCategory(18),
+  /** Необходим для раскрытия категорий товаров. */
+  marketSuggestorCategory(19),
+  /** Метакатегория. */
+  metaRubric(20),
   /** Организация. */
-  org(8),
-  /** Рубрика. */
-  orgCategory(9),
+  org(21),
   /** Парковка. */
-  parking(10),
-  /** Регион. */
-  region(11),
+  parking(22),
   /** Дорога. */
-  road(12),
-  /** Маршрут общественного транспорта. */
-  route(13),
-  /** Остановка. */
-  station(14),
+  road(23),
+  /** Маршрут. */
+  route(24),
+  /** Тип маршрута. */
+  routeType(25),
+  /** Категория. */
+  rubric(26),
+  /** Остановка или станция общественного транспорта. */
+  station(27),
   /** Вход на станцию. */
-  stationEntrance(15),
+  stationEntrance(28),
+  /** Станция метро. */
+  stationMetro(29),
   /** Улица. */
-  street(16),
+  street(30),
   /** Текстовая подсказка. */
-  text(17),
+  text(31),
   /** На случай получения неожиданного типа. */
-  unknown(18),
+  unknown(32),
   ;
 
   const SuggestedType(this.rawValue);
@@ -12260,13 +12748,18 @@ extension _DartTo_CSuggestedType on SuggestedType {
 
 /** Тип подсказчика. */
 enum SuggestorType {
-  /** Подсказчик для основной строки поиска. */
-  general(0),
-  /**
-   Подсказчик для выбора точек проезда.
-   Оптимизирован для поиска точечных объектов в одно действие. Откидывает объекты без точек.
-  */
-  routeEndpoint(1),
+  /** Подсказка адресов. */
+  address(0),
+  /** Подсказка населённых пунктов. Может использоваться без указания проекта. */
+  citySelector(1),
+  /** Подсказка по объектам справочника (категории, фирмы, улицы, города и т.д.). */
+  object(2),
+  /** Подсказка мест. */
+  places(3),
+  /** Идеально подходит для быстрого поиска конечных объектов маршрута. Все результаты имеют id и координаты. */
+  routeEndpoint(4),
+  /** Подсказка категорий. */
+  rubric(5),
   ;
 
   const SuggestorType(this.rawValue);
@@ -12469,7 +12962,9 @@ extension _DartTo_CArray_CSuggest on List<Suggest> {
   _CArray_CSuggest _copyFromDartTo_CArray_CSuggest() {
     final cArray = _CArray_CSuggestmakeEmpty();
     forEach((item) {
-        _CArray_CSuggestaddElement(cArray, item._copyFromDartTo_CSuggest());
+        final cItem = item._copyFromDartTo_CSuggest();
+        _CArray_CSuggestaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -13310,7 +13805,9 @@ extension _DartTo_CArray_CRubricId on List<RubricId> {
   _CArray_CRubricId _copyFromDartTo_CArray_CRubricId() {
     final cArray = _CArray_CRubricIdmakeEmpty();
     forEach((item) {
-        _CArray_CRubricIdaddElement(cArray, item._copyFromDartTo_CRubricId());
+        final cItem = item._copyFromDartTo_CRubricId();
+        _CArray_CRubricIdaddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -13516,7 +14013,7 @@ class SuggestQueryBuilder implements ffi.Finalizable {
   /**
    Задать тип подсказчика.
   
-   - Note: по умолчанию #SuggestorType::General
+   - Note: по умолчанию #SuggestorType::Object
   */
   SuggestQueryBuilder setSuggestorType(
     SuggestorType suggestorType
@@ -13597,7 +14094,9 @@ extension _DartTo_CArray_CSuggestedType on List<SuggestedType> {
   _CArray_CSuggestedType _copyFromDartTo_CArray_CSuggestedType() {
     final cArray = _CArray_CSuggestedTypemakeEmpty();
     forEach((item) {
-        _CArray_CSuggestedTypeaddElement(cArray, item._copyFromDartTo_CSuggestedType());
+        final cItem = item._copyFromDartTo_CSuggestedType();
+        _CArray_CSuggestedTypeaddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -14248,7 +14747,9 @@ extension _DartTo_CArray_CGeometry on List<Geometry> {
   _CArray_CGeometry _copyFromDartTo_CArray_CGeometry() {
     final cArray = _CArray_CGeometrymakeEmpty();
     forEach((item) {
-        _CArray_CGeometryaddElement(cArray, item._copyFromDartTo_CGeometry());
+        final cItem = item._copyFromDartTo_CGeometry();
+        _CArray_CGeometryaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -14476,7 +14977,9 @@ extension _DartTo_CArray_CAttributeValue on List<AttributeValue> {
   _CArray_CAttributeValue _copyFromDartTo_CArray_CAttributeValue() {
     final cArray = _CArray_CAttributeValuemakeEmpty();
     forEach((item) {
-        _CArray_CAttributeValueaddElement(cArray, item._copyFromDartTo_CAttributeValue());
+        final cItem = item._copyFromDartTo_CAttributeValue();
+        _CArray_CAttributeValueaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -14517,7 +15020,11 @@ extension _DartTo_CDictionary_CString_CAttributeValue on core.Map<String, Attrib
   _CDictionary_CString_CAttributeValue _copyFromDartTo_CDictionary_CString_CAttributeValue() {
     final cDict = _CDictionary_CString_CAttributeValuemakeEmpty();
     forEach((k, v) {
-        _CDictionary_CString_CAttributeValueaddElement(cDict, k._copyFromDartTo_CString(), v._copyFromDartTo_CAttributeValue());
+        final cKey = k._copyFromDartTo_CString();
+        final cValue = v._copyFromDartTo_CAttributeValue();
+        _CDictionary_CString_CAttributeValueaddElement(cDict, cKey, cValue);
+        cKey._releaseIntermediate();
+        cValue._releaseIntermediate();
     });
     return cDict;
   }
@@ -15395,7 +15902,7 @@ extension _CZoomRelease on _CZoom {
 /**
  Угол наклона в градусах, где 0 - надир (смотрим вертикально вниз), 90 - горизонт спереди.
 
- Допустимыми считаются значения в интервале от 0 до 60 градусов.
+ Допустимыми считаются значения в интервале от 0 до 70 градусов.
  В случаях, когда точка позиции камеры расположена ближе к нижнему краю экрана,
  значение может быть дополнительно уменьшено.
 */
@@ -15729,9 +16236,9 @@ extension _DartTo_CCameraMoveController on CameraMoveController {
     _CCameraMoveControllerInstanceMap[instanceId] = _CameraMoveController(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final position_CTimeIntervalFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CCameraPosition)>>, _CTimeInterval)>.listener(position_CTimeIntervalFunction);
     res._position_CTimeInterval = position_CTimeIntervalFunctionCallable.nativeFunction;
@@ -16442,9 +16949,9 @@ extension _DartTo_CCustomFollowController on CustomFollowController {
     _CCustomFollowControllerInstanceMap[instanceId] = _CustomFollowController(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final availableValuesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptionSet_CFollowValue)>>)>.listener(availableValuesFunction);
     res._availableValues = availableValuesFunctionCallable.nativeFunction;
@@ -18220,9 +18727,9 @@ extension _DartTo_CAny on Object? {
     _CAnyInstanceMap[instanceId] = _Any(this!);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
     return res;
   }
 }
@@ -19187,7 +19694,9 @@ extension _DartTo_CArray_CGeometryMapObject on List<GeometryMapObject> {
   _CArray_CGeometryMapObject _copyFromDartTo_CArray_CGeometryMapObject() {
     final cArray = _CArray_CGeometryMapObjectmakeEmpty();
     forEach((item) {
-        _CArray_CGeometryMapObjectaddElement(cArray, item._copyFromDartTo_CGeometryMapObject());
+        final cItem = item._copyFromDartTo_CGeometryMapObject();
+        _CArray_CGeometryMapObjectaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -19396,6 +19905,9 @@ extension _CSourceToDart on _CSource {
         return res;
       case 5:
         final res = RoadEventSource._create(_retain()._impl);
+        return res;
+      case 6:
+        final res = RasterTileSource._create(_retain()._impl);
         return res;
       default: throw Exception("Unrecognized case index $selector");
     }
@@ -19856,7 +20368,9 @@ extension _DartTo_CArray_CMapObject on List<MapObject> {
   _CArray_CMapObject _copyFromDartTo_CArray_CMapObject() {
     final cArray = _CArray_CMapObjectmakeEmpty();
     forEach((item) {
-        _CArray_CMapObjectaddElement(cArray, item._copyFromDartTo_CMapObject());
+        final cItem = item._copyFromDartTo_CMapObject();
+        _CArray_CMapObjectaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -19941,10 +20455,10 @@ extension _DartToCImage on Image {
 // MARK: - ImageFormat
 
 enum ImageFormat {
-  pNG(0),
-  sVG(1),
-  rGBA_8888(2),
-  lOTTIE_JSON(3),
+  png(0),
+  svg(1),
+  rgba8888(2),
+  lottieJson(3),
   ;
 
   const ImageFormat(this.rawValue);
@@ -20203,9 +20717,9 @@ extension _DartTo_CImageLoader on ImageLoader {
     _CImageLoaderInstanceMap[instanceId] = _ImageLoader(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final loadFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CImageData)>>)>.listener(loadFunction);
     res._load = loadFunctionCallable.nativeFunction;
@@ -20557,12 +21071,12 @@ extension _CMyLocationControllerSettingsRelease on _CMyLocationControllerSetting
 /** Тип маркера геопозиции. */
 enum MyLocationMapObjectMarkerType {
   /** Использовать стандартные модели из стилей. Нет возможности кастомизации. */
-  mODEL(0),
+  model(0),
   /**
    Использовать SVG иконки. Есть возможность менять иконку через редактор стилей. Соответствующие слои:
    s_dvg_foot_gps_marker_with_direction, s_dvg_foot_gps_marker2, s_dvg_foot_gps_marker_degraded2
   */
-  sVG_ICON(1),
+  svgIcon(1),
   ;
 
   const MyLocationMapObjectMarkerType(this.rawValue);
@@ -20621,7 +21135,7 @@ class MyLocationMapObjectSource extends Source implements ffi.Finalizable {
   factory MyLocationMapObjectSource(
     Context context,
     [MyLocationControllerSettings controllerSettings = const MyLocationControllerSettings(),
-    MyLocationMapObjectMarkerType markerType = MyLocationMapObjectMarkerType.mODEL
+    MyLocationMapObjectMarkerType markerType = MyLocationMapObjectMarkerType.model
     ]) {
     var _a0 = context._copyFromDartTo_CContext();
     var _a1 = controllerSettings._copyFromDartTo_CMyLocationControllerSettings();
@@ -21795,7 +22309,9 @@ extension _DartTo_CArray_CRoadEventPhoto on List<RoadEventPhoto> {
   _CArray_CRoadEventPhoto _copyFromDartTo_CArray_CRoadEventPhoto() {
     final cArray = _CArray_CRoadEventPhotomakeEmpty();
     forEach((item) {
-        _CArray_CRoadEventPhotoaddElement(cArray, item._copyFromDartTo_CRoadEventPhoto());
+        final cItem = item._copyFromDartTo_CRoadEventPhoto();
+        _CArray_CRoadEventPhotoaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -22199,7 +22715,9 @@ extension _DartTo_CArray_CRoadEventAction on List<RoadEventAction> {
   _CArray_CRoadEventAction _copyFromDartTo_CArray_CRoadEventAction() {
     final cArray = _CArray_CRoadEventActionmakeEmpty();
     forEach((item) {
-        _CArray_CRoadEventActionaddElement(cArray, item._copyFromDartTo_CRoadEventAction());
+        final cItem = item._copyFromDartTo_CRoadEventAction();
+        _CArray_CRoadEventActionaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -22923,9 +23441,9 @@ extension _DartTo_CStyleZoomToTiltRelation on StyleZoomToTiltRelation {
     _CStyleZoomToTiltRelationInstanceMap[instanceId] = _StyleZoomToTiltRelation(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final styleZoomToTilt_CStyleZoomFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CTilt)>>, _CStyleZoom)>.listener(styleZoomToTilt_CStyleZoomFunction);
     res._styleZoomToTilt_CStyleZoom = styleZoomToTilt_CStyleZoomFunctionCallable.nativeFunction;
@@ -25591,7 +26109,9 @@ extension _DartTo_CSet_CLevelId on Set<LevelId> {
   _CSet_CLevelId _copyFromDartTo_CSet_CLevelId() {
     final cSet = _CSet_CLevelIdmakeEmpty();
     forEach((item) {
-        _CSet_CLevelIdaddElement(cSet, item._copyFromDartTo_CLevelId());
+        final cItem = item._copyFromDartTo_CLevelId();
+        _CSet_CLevelIdaddElement(cSet, cItem);
+        
     });
     return cSet;
   }
@@ -26910,7 +27430,9 @@ extension _DartTo_CArray_CSource on List<Source> {
   _CArray_CSource _copyFromDartTo_CArray_CSource() {
     final cArray = _CArray_CSourcemakeEmpty();
     forEach((item) {
-        _CArray_CSourceaddElement(cArray, item._copyFromDartTo_CSource());
+        final cItem = item._copyFromDartTo_CSource();
+        _CArray_CSourceaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -27052,7 +27574,9 @@ extension _DartTo_CArray_CRenderedObjectInfo on List<RenderedObjectInfo> {
   _CArray_CRenderedObjectInfo _copyFromDartTo_CArray_CRenderedObjectInfo() {
     final cArray = _CArray_CRenderedObjectInfomakeEmpty();
     forEach((item) {
-        _CArray_CRenderedObjectInfoaddElement(cArray, item._copyFromDartTo_CRenderedObjectInfo());
+        final cItem = item._copyFromDartTo_CRenderedObjectInfo();
+        _CArray_CRenderedObjectInfoaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -29385,7 +29909,9 @@ extension _DartTo_CArray_CSimpleMapObject on List<SimpleMapObject> {
   _CArray_CSimpleMapObject _copyFromDartTo_CArray_CSimpleMapObject() {
     final cArray = _CArray_CSimpleMapObjectmakeEmpty();
     forEach((item) {
-        _CArray_CSimpleMapObjectaddElement(cArray, item._copyFromDartTo_CSimpleMapObject());
+        final cItem = item._copyFromDartTo_CSimpleMapObject();
+        _CArray_CSimpleMapObjectaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -30006,9 +30532,9 @@ extension _DartTo_CSimpleClusterRenderer on SimpleClusterRenderer {
     _CSimpleClusterRendererInstanceMap[instanceId] = _SimpleClusterRenderer(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final renderCluster_CSimpleClusterObjectFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CSimpleClusterOptions)>>, _CSimpleClusterObject)>.listener(renderCluster_CSimpleClusterObjectFunction);
     res._renderCluster_CSimpleClusterObject = renderCluster_CSimpleClusterObjectFunctionCallable.nativeFunction;
@@ -31218,7 +31744,9 @@ extension _DartTo_CArray_CColor on List<Color> {
   _CArray_CColor _copyFromDartTo_CArray_CColor() {
     final cArray = _CArray_CColormakeEmpty();
     forEach((item) {
-        _CArray_CColoraddElement(cArray, item._copyFromDartTo_CColor());
+        final cItem = item._copyFromDartTo_CColor();
+        _CArray_CColoraddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -32510,33 +33038,129 @@ Image createImage(
   return t;
 }
 
-// MARK: - createRasterTileDataSource
+// MARK: - createDefaultMaxTiltRestriction
+
+/** Получаем стандартную зависимость максимального угла наклона от стилевого уровня масштабирования. */
+StyleZoomToTiltRelation createDefaultMaxTiltRestriction(){
+  _CStyleZoomToTiltRelation res = _CFunction_G_createDefaultMaxTiltRestriction();
+  final t = res._toDart();
+  res._releaseIntermediate();
+  return t;
+}
+
+// MARK: - createDefaultStyleZoomToTiltRelation
 
 /**
- Создание источника, получающего растровые тайлы.
-
- - Parameter context: контекст.
- - Parameter sublayerName: имя, которое будет использовано при генерации объектов.
- Это имя должно быть указано в стилях в условии filter слоя типа raster для атрибута db_sublayer.
- Пример: ["match", ["get", "db_sublayer"], ["NAME"], true, false]
- Подробнее см. спецификацию: https://docs.2gis.com/ru/mapgl/stylespecification
- - Parameter sourceTemplate: Шаблон для запроса тайлов
+ Получение зависимости угла наклона камеры от стилевого уровня масштабирования
+ для стандартного контроллера слежения за наклоном.
 */
-Source createRasterTileDataSource(
-  Context context,
-  String sublayerName,
-  RasterUrlTemplate sourceTemplate
+StyleZoomToTiltRelation createDefaultStyleZoomToTiltRelation(){
+  _CStyleZoomToTiltRelation res = _CFunction_G_createDefaultStyleZoomToTiltRelation();
+  final t = res._toDart();
+  res._releaseIntermediate();
+  return t;
+}
+
+// MARK: - createStyleZoomToTiltRelation
+
+/**
+ Создаем зависимость угла наклона камеры от стилевого уровня масштабирования.
+
+ - Parameter points: Точки, по которым строится зависимость.
+ - Returns: зависимость угла наклона камеры от стилевого уровня масштабирования, если создать зависимость не
+ удалось - бросаем исключение.
+ - Note: Зависимость должна представлять собой монотонную непрерывную функцию.
+ Если точками задана зависимость, не удовлетворяющая условиям, то функция бросает исключение.
+ Зависимость, примерно как в 2гис, можно задать последовательностью точек [(17, 0), (19, 15), (20, 25)] в режиме карты
+ и [(15, 0), (16, 34), (17, 48)] в режиме навигатора.
+ Пусть нужно получить значение угла наклона камеры T для стилевого уровня масштабирования Z, такого что Z0
+ <
+ = Z
+ <
+ Z1 и
+ зависимость задана точками [(Z0, T0), (Z1, T1)]. Тогда искомое значение рассчитывается по формуле
+ T = T0 + k * (T1 - T0), где k = (Z - Z0) / (Z1 - Z0). Если Z
+ <
+ Z0, то T = T0. Если Z >= Z1, то T = T1.
+*/
+StyleZoomToTiltRelation createStyleZoomToTiltRelation(
+  core.Map<StyleZoom, Tilt> points
 ){
-  var _a0 = context._copyFromDartTo_CContext();
-  var _a1 = sublayerName._copyFromDartTo_CString();
-  var _a2 = sourceTemplate._copyFromDartTo_CRasterUrlTemplate();
-  _CSource res = _CFunction_G_createRasterTileDataSource_With_CContext_CString_CRasterUrlTemplate(_a0, _a1, _a2);
-  _a2._releaseIntermediate();
-  _a1._releaseIntermediate();
+  var _a0 = points._copyFromDartTo_CDictionary_CStyleZoom_CTilt();
+  _CStyleZoomToTiltRelation res = _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTilt(_a0);
   _a0._releaseIntermediate();
   final t = res._toDart();
   res._releaseIntermediate();
   return t;
+}
+
+// MARK: - core.Map<StyleZoom, Tilt> <-> _CDictionary_CStyleZoom_CTilt
+
+final class _CDictionary_CStyleZoom_CTilt extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> _impl;
+}
+
+extension _CDictionary_CStyleZoom_CTiltToDart on _CDictionary_CStyleZoom_CTilt {
+  core.Map<StyleZoom, Tilt> _toDart() {
+    return _fillFromC();
+  }
+}
+
+extension _DartTo_CDictionary_CStyleZoom_CTilt on core.Map<StyleZoom, Tilt> {
+  _CDictionary_CStyleZoom_CTilt _copyFromDartTo_CDictionary_CStyleZoom_CTilt() {
+    final cDict = _CDictionary_CStyleZoom_CTiltmakeEmpty();
+    forEach((k, v) {
+        final cKey = k._copyFromDartTo_CStyleZoom();
+        final cValue = v._copyFromDartTo_CTilt();
+        _CDictionary_CStyleZoom_CTiltaddElement(cDict, cKey, cValue);
+        
+        
+    });
+    return cDict;
+  }
+}
+
+extension _CDictionary_CStyleZoom_CTiltBasicFunctions on _CDictionary_CStyleZoom_CTilt {
+  void _releaseIntermediate() {
+    _CDictionary_CStyleZoom_CTilt_release(this);
+  }
+
+  static final _mapToFill = <StyleZoom, Tilt>{};
+
+  static void _iterate(_CStyleZoom key, _CTilt value) {
+    _mapToFill.putIfAbsent(key._toDart(), () => value._toDart());
+  }
+
+  core.Map<StyleZoom, Tilt> _fillFromC() {
+    _forEach_CDictionary_CStyleZoom_CTilt(this, ffi.Pointer.fromFunction<ffi.Void Function(_CStyleZoom, _CTilt value)>(_iterate));
+    final result = core.Map<StyleZoom, Tilt>.from(_mapToFill);
+    _mapToFill.clear();
+    return result;
+  }
+}
+	
+// MARK: - projectionZToStyleZ
+
+StyleZoom projectionZToStyleZ(
+  Zoom projectionZ,
+  Latitude latitude
+){
+  var _a0 = projectionZ._copyFromDartTo_CZoom();
+  var _a1 = latitude._copyFromDartTo_CLatitude();
+  _CStyleZoom res = _CFunction_G_projectionZToStyleZ_With_CZoom_CLatitude(_a0, _a1);
+  return res._toDart();
+}
+
+// MARK: - styleZToProjectionZ
+
+Zoom styleZToProjectionZ(
+  StyleZoom styleZ,
+  Latitude latitude
+){
+  var _a0 = styleZ._copyFromDartTo_CStyleZoom();
+  var _a1 = latitude._copyFromDartTo_CLatitude();
+  _CZoom res = _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitude(_a0, _a1);
+  return res._toDart();
 }
 
 // MARK: - DefaultRasterUrlTemplate
@@ -32732,127 +33356,97 @@ extension _DartTo_CRasterUrlTemplate on RasterUrlTemplate {
   }
 }
 
-// MARK: - createDefaultMaxTiltRestriction
+// MARK: - RasterTileSource
 
-/** Получаем стандартную зависимость максимального угла наклона от стилевого уровня масштабирования. */
-StyleZoomToTiltRelation createDefaultMaxTiltRestriction(){
-  _CStyleZoomToTiltRelation res = _CFunction_G_createDefaultMaxTiltRestriction();
-  final t = res._toDart();
-  res._releaseIntermediate();
-  return t;
+/** Источник, получающий растровые тайлы. */
+class RasterTileSource extends Source implements ffi.Finalizable {
+  static final _finalizer = ffi.NativeFinalizer(_CRasterTileSource_releasePtr);
+
+  RasterTileSource._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
+  factory RasterTileSource._create(ffi.Pointer<ffi.Void> self) {
+    final classObject = RasterTileSource._raw(self);
+    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
+    return classObject;
+  }
+
+  /**
+   Создание источника, получающего растровые тайлы.
+  
+   - Parameter context: контекст.
+   - Parameter sublayerName: имя, которое будет использовано при генерации объектов.
+   Это имя должно быть указано в стилях в условии filter слоя типа raster для атрибута db_sublayer.
+   Пример: ["match", ["get", "db_sublayer"], ["NAME"], true, false]
+   Подробнее см. спецификацию: https://docs.2gis.com/ru/mapgl/stylespecification
+   - Parameter sourceTemplate: Шаблон для запроса тайлов.
+  */
+  factory RasterTileSource(
+    Context context,
+    String sublayerName,
+    RasterUrlTemplate sourceTemplate
+  ) {
+    var _a0 = context._copyFromDartTo_CContext();
+    var _a1 = sublayerName._copyFromDartTo_CString();
+    var _a2 = sourceTemplate._copyFromDartTo_CRasterUrlTemplate();
+    _CRasterTileSource res = _CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplate(_a0, _a1, _a2);
+    _a2._releaseIntermediate();
+    _a1._releaseIntermediate();
+    _a0._releaseIntermediate();
+    return RasterTileSource._create(res._impl);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is RasterTileSource &&
+    other.runtimeType == runtimeType &&
+    _CRasterTileSource_cg_objectIdentifier(this._self) == _CRasterTileSource_cg_objectIdentifier(other._self);
+
+  @override
+  int get hashCode {
+    final identifier = _CRasterTileSource_cg_objectIdentifier(this._self);
+    return identifier.hashCode;
+  }
+
+  // MARK: RasterTileSource: Methods
+
+  /** Установка значения прозрачности растрового тайла. */
+  void setOpacity(
+    Opacity opacity
+  )  {
+    var _a1 = opacity._copyFromDartTo_COpacity();
+    void res = _CRasterTileSource_setOpacity_COpacity(_CRasterTileSourceMakeDefault().._impl=_self, _a1);
+    return res;
+  }
+
 }
 
-// MARK: - createDefaultStyleZoomToTiltRelation
+// MARK: - RasterTileSource <-> CRasterTileSource
 
-/**
- Получение зависимости угла наклона камеры от стилевого уровня масштабирования
- для стандартного контроллера слежения за наклоном.
-*/
-StyleZoomToTiltRelation createDefaultStyleZoomToTiltRelation(){
-  _CStyleZoomToTiltRelation res = _CFunction_G_createDefaultStyleZoomToTiltRelation();
-  final t = res._toDart();
-  res._releaseIntermediate();
-  return t;
-}
-
-// MARK: - createStyleZoomToTiltRelation
-
-/**
- Создаем зависимость угла наклона камеры от стилевого уровня масштабирования.
-
- - Parameter points: Точки, по которым строится зависимость.
- - Returns: зависимость угла наклона камеры от стилевого уровня масштабирования, если создать зависимость не
- удалось - бросаем исключение.
- - Note: Зависимость должна представлять собой монотонную непрерывную функцию.
- Если точками задана зависимость, не удовлетворяющая условиям, то функция бросает исключение.
- Зависимость, примерно как в 2гис, можно задать последовательностью точек [(17, 0), (19, 15), (20, 25)] в режиме карты
- и [(15, 0), (16, 34), (17, 48)] в режиме навигатора.
- Пусть нужно получить значение угла наклона камеры T для стилевого уровня масштабирования Z, такого что Z0
- <
- = Z
- <
- Z1 и
- зависимость задана точками [(Z0, T0), (Z1, T1)]. Тогда искомое значение рассчитывается по формуле
- T = T0 + k * (T1 - T0), где k = (Z - Z0) / (Z1 - Z0). Если Z
- <
- Z0, то T = T0. Если Z >= Z1, то T = T1.
-*/
-StyleZoomToTiltRelation createStyleZoomToTiltRelation(
-  core.Map<StyleZoom, Tilt> points
-){
-  var _a0 = points._copyFromDartTo_CDictionary_CStyleZoom_CTilt();
-  _CStyleZoomToTiltRelation res = _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTilt(_a0);
-  _a0._releaseIntermediate();
-  final t = res._toDart();
-  res._releaseIntermediate();
-  return t;
-}
-
-// MARK: - core.Map<StyleZoom, Tilt> <-> _CDictionary_CStyleZoom_CTilt
-
-final class _CDictionary_CStyleZoom_CTilt extends ffi.Struct {
+final class _CRasterTileSource extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _impl;
 }
 
-extension _CDictionary_CStyleZoom_CTiltToDart on _CDictionary_CStyleZoom_CTilt {
-  core.Map<StyleZoom, Tilt> _toDart() {
-    return _fillFromC();
-  }
-}
-
-extension _DartTo_CDictionary_CStyleZoom_CTilt on core.Map<StyleZoom, Tilt> {
-  _CDictionary_CStyleZoom_CTilt _copyFromDartTo_CDictionary_CStyleZoom_CTilt() {
-    final cDict = _CDictionary_CStyleZoom_CTiltmakeEmpty();
-    forEach((k, v) {
-        _CDictionary_CStyleZoom_CTiltaddElement(cDict, k._copyFromDartTo_CStyleZoom(), v._copyFromDartTo_CTilt());
-    });
-    return cDict;
-  }
-}
-
-extension _CDictionary_CStyleZoom_CTiltBasicFunctions on _CDictionary_CStyleZoom_CTilt {
+extension _CRasterTileSourceBasicFunctions on _CRasterTileSource {
   void _releaseIntermediate() {
-    _CDictionary_CStyleZoom_CTilt_release(this);
+    _CRasterTileSource_release(_impl);
   }
 
-  static final _mapToFill = <StyleZoom, Tilt>{};
-
-  static void _iterate(_CStyleZoom key, _CTilt value) {
-    _mapToFill.putIfAbsent(key._toDart(), () => value._toDart());
-  }
-
-  core.Map<StyleZoom, Tilt> _fillFromC() {
-    _forEach_CDictionary_CStyleZoom_CTilt(this, ffi.Pointer.fromFunction<ffi.Void Function(_CStyleZoom, _CTilt value)>(_iterate));
-    final result = core.Map<StyleZoom, Tilt>.from(_mapToFill);
-    _mapToFill.clear();
-    return result;
+  _CRasterTileSource _retain() {
+    return _CRasterTileSource_retain(_impl);
   }
 }
-	
-// MARK: - projectionZToStyleZ
 
-StyleZoom projectionZToStyleZ(
-  Zoom projectionZ,
-  Latitude latitude
-){
-  var _a0 = projectionZ._copyFromDartTo_CZoom();
-  var _a1 = latitude._copyFromDartTo_CLatitude();
-  _CStyleZoom res = _CFunction_G_projectionZToStyleZ_With_CZoom_CLatitude(_a0, _a1);
-  return res._toDart();
+extension _CRasterTileSourceToDart on _CRasterTileSource {
+  RasterTileSource _toDart() {
+    return RasterTileSource._create(_retain()._impl);
+  }
 }
 
-// MARK: - styleZToProjectionZ
 
-Zoom styleZToProjectionZ(
-  StyleZoom styleZ,
-  Latitude latitude
-){
-  var _a0 = styleZ._copyFromDartTo_CStyleZoom();
-  var _a1 = latitude._copyFromDartTo_CLatitude();
-  _CZoom res = _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitude(_a0, _a1);
-  return res._toDart();
+extension _DartToCRasterTileSource on RasterTileSource {
+  _CRasterTileSource _copyFromDartTo_CRasterTileSource() {
+    return (_CRasterTileSourceMakeDefault().._impl=_self)._retain();
+  }
 }
-
 // MARK: - PackedMapState
 
 /** Сериализованное состояние карты. */
@@ -34244,15 +34838,15 @@ extension _DartTo_CFuture_CStyle on CancelableOperation<Style> {
 /** Задает правило обработки событий вращения карты. */
 enum RotationCenter {
   /** Вращать относительно геометрического центра множества точек постановки пальцев. */
-  eVENT_CENTER(0),
+  eventCenter(0),
   /** Вращать относительно точки позиции карты. */
-  mAP_POSITION(1),
+  mapPosition(1),
   /**
    Вращать относительно геопозиции.
    Геопозиция устанавливается через метод set_target_geo_point.
    Если геопозиция не указана, то вращение производится относительно точки позиции карты.
   */
-  gEO_POSITION(2),
+  geoPosition(2),
   ;
 
   const RotationCenter(this.rawValue);
@@ -34291,15 +34885,15 @@ extension _DartTo_CRotationCenter on RotationCenter {
 /** Задает правило обработки событий масштабирования карты. */
 enum ScalingCenter {
   /** Масштабировать относительно геометрического центра множества точек постановки пальцев. */
-  eVENT_CENTER(0),
+  eventCenter(0),
   /** Масштабировать относительно точки позиции карты. */
-  mAP_POSITION(1),
+  mapPosition(1),
   /**
    Масштабировать относительно геопозиции.
    Геопозиция устанавливается через метод set_target_geo_point.
    Если геопозиция не указана, то масштабирование производится относительно точки позиции карты.
   */
-  gEO_POSITION(2),
+  geoPosition(2),
   ;
 
   const ScalingCenter(this.rawValue);
@@ -35150,7 +35744,9 @@ extension _DartTo_CArray_COptionSet_CGesture on List<GestureEnumSet> {
   _CArray_COptionSet_CGesture _copyFromDartTo_CArray_COptionSet_CGesture() {
     final cArray = _CArray_COptionSet_CGesturemakeEmpty();
     forEach((item) {
-        _CArray_COptionSet_CGestureaddElement(cArray, item._copyFromDartTo_COptionSet_CGesture());
+        final cItem = item._copyFromDartTo_COptionSet_CGesture();
+        _CArray_COptionSet_CGestureaddElement(cArray, cItem);
+        
     });
     return cArray;
   }
@@ -35850,7 +36446,9 @@ extension _DartTo_CArray_CLocale on List<Locale> {
   _CArray_CLocale _copyFromDartTo_CArray_CLocale() {
     final cArray = _CArray_CLocalemakeEmpty();
     forEach((item) {
-        _CArray_CLocaleaddElement(cArray, item._copyFromDartTo_CLocale());
+        final cItem = item._copyFromDartTo_CLocale();
+        _CArray_CLocaleaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
     });
     return cArray;
   }
@@ -36270,9 +36868,9 @@ extension _DartTo_CPlatformLocaleManager on PlatformLocaleManager {
     _CPlatformLocaleManagerInstanceMap[instanceId] = _PlatformLocaleManager(this);
     res._value = ffi.Pointer.fromAddress(instanceId);
     final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
+    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
     res._retain = retainFunctionCallable.nativeFunction;
-    res._release = releaseFunctionCallable.nativeFunction;
+    //res._release = releaseFunctionCallable.nativeFunction;
 
     final localesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CLocale)>>)>.listener(localesFunction);
     res._locales = localesFunctionCallable.nativeFunction;
@@ -38298,12 +38896,42 @@ late final _CFormattedAddressMakeDefault = _CFormattedAddressMakeDefaultPtr.asFu
 
 late final _CFormattingTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFormattingType Function()>>('CFormattingTypeMakeDefault');
 late final _CFormattingTypeMakeDefault = _CFormattingTypeMakeDefaultPtr.asFunction<_CFormattingType Function()>();
+
+late final _CAggregateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CAggregate Function()>>('CAggregateMakeDefault');
+late final _CAggregateMakeDefault = _CAggregateMakeDefaultPtr.asFunction<_CAggregate Function()>();
+
+
+late final _CStatusTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CStatusType Function()>>('CStatusTypeMakeDefault');
+late final _CStatusTypeMakeDefault = _CStatusTypeMakeDefaultPtr.asFunction<_CStatusType Function()>();
+
+late final _CConnectorMakeDefaultPtr = _lookup<ffi.NativeFunction<_CConnector Function()>>('CConnectorMakeDefault');
+late final _CConnectorMakeDefault = _CConnectorMakeDefaultPtr.asFunction<_CConnector Function()>();
+
+
+late final _CArray_CConnectormakeEmptyPtr = _lookup<ffi.NativeFunction<_CArray_CConnector Function()>>('CArray_CConnector_makeEmpty');
+late final _CArray_CConnectormakeEmpty = _CArray_CConnectormakeEmptyPtr.asFunction<_CArray_CConnector Function()>();
+late final _CArray_CConnectoraddElementPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CConnector, _CConnector)>>('CArray_CConnector_addElement');
+late final _CArray_CConnectoraddElement = _CArray_CConnectoraddElementPtr.asFunction<void Function(_CArray_CConnector, _CConnector)>();
+late final _forEach_CArray_CConnectorPtr = _lookup<ffi.NativeFunction<
+  ffi.Void Function(_CArray_CConnector, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CConnector)>>)
+>>('CArray_CConnector_forEachWithFunctionPointer');
+late final _forEach_CArray_CConnector = _forEach_CArray_CConnectorPtr.asFunction<
+  void Function(_CArray_CConnector, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CConnector)
+>>)>();
+late final _CArray_CConnector_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CConnector)>>('CArray_CConnector_release');
+late final _CArray_CConnector_release = _CArray_CConnector_releasePtr.asFunction<void Function(_CArray_CConnector)>();
+
+late final _CChargingStationMakeDefaultPtr = _lookup<ffi.NativeFunction<_CChargingStation Function()>>('CChargingStationMakeDefault');
+late final _CChargingStationMakeDefault = _CChargingStationMakeDefaultPtr.asFunction<_CChargingStation Function()>();
+
 late final _CItemMarkerInfo_objectIdPtr = _lookup<ffi.NativeFunction<_COptional_CDgisObjectId Function(_CItemMarkerInfo)>>('CItemMarkerInfo_objectId');
 late final _CItemMarkerInfo_objectId = _CItemMarkerInfo_objectIdPtr.asFunction<_COptional_CDgisObjectId Function(_CItemMarkerInfo)>();
 late final _CItemMarkerInfo_geoPointPtr = _lookup<ffi.NativeFunction<_CGeoPointWithElevation Function(_CItemMarkerInfo)>>('CItemMarkerInfo_geoPoint');
 late final _CItemMarkerInfo_geoPoint = _CItemMarkerInfo_geoPointPtr.asFunction<_CGeoPointWithElevation Function(_CItemMarkerInfo)>();
 late final _CItemMarkerInfo_floorInfoPtr = _lookup<ffi.NativeFunction<_COptional_CFloorInfo Function(_CItemMarkerInfo)>>('CItemMarkerInfo_floorInfo');
 late final _CItemMarkerInfo_floorInfo = _CItemMarkerInfo_floorInfoPtr.asFunction<_COptional_CFloorInfo Function(_CItemMarkerInfo)>();
+late final _CItemMarkerInfo_titlePtr = _lookup<ffi.NativeFunction<_COptional_CString Function(_CItemMarkerInfo)>>('CItemMarkerInfo_title');
+late final _CItemMarkerInfo_title = _CItemMarkerInfo_titlePtr.asFunction<_COptional_CString Function(_CItemMarkerInfo)>();
 
 late final _CItemMarkerInfo_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Int64 Function(ffi.Pointer<ffi.Void>)>>('CItemMarkerInfo_cg_objectIdentifier');
 late final _CItemMarkerInfo_cg_objectIdentifier = _CItemMarkerInfo_cg_objectIdentifierPtr.asFunction<int Function(ffi.Pointer<ffi.Void>)>();
@@ -38537,6 +39165,8 @@ late final _CDirectoryObject_tradeLicensePtr = _lookup<ffi.NativeFunction<_COpti
 late final _CDirectoryObject_tradeLicense = _CDirectoryObject_tradeLicensePtr.asFunction<_COptional_CTradeLicense Function(_CDirectoryObject)>();
 late final _CDirectoryObject_buildingInfoPtr = _lookup<ffi.NativeFunction<_CBuildingInfo Function(_CDirectoryObject)>>('CDirectoryObject_buildingInfo');
 late final _CDirectoryObject_buildingInfo = _CDirectoryObject_buildingInfoPtr.asFunction<_CBuildingInfo Function(_CDirectoryObject)>();
+late final _CDirectoryObject_chargingStationPtr = _lookup<ffi.NativeFunction<_COptional_CChargingStation Function(_CDirectoryObject)>>('CDirectoryObject_chargingStation');
+late final _CDirectoryObject_chargingStation = _CDirectoryObject_chargingStationPtr.asFunction<_COptional_CChargingStation Function(_CDirectoryObject)>();
 
 late final _CDirectoryObject_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Int64 Function(ffi.Pointer<ffi.Void>)>>('CDirectoryObject_cg_objectIdentifier');
 late final _CDirectoryObject_cg_objectIdentifier = _CDirectoryObject_cg_objectIdentifierPtr.asFunction<int Function(ffi.Pointer<ffi.Void>)>();
@@ -38651,6 +39281,12 @@ late final _COptional_CTradeLicenseMakeDefault = _COptional_CTradeLicenseMakeDef
 
 late final _COptional_CTradeLicense_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CTradeLicense)>>('COptional_CTradeLicense_release');
 late final _COptional_CTradeLicense_release = _COptional_CTradeLicense_releasePtr.asFunction<void Function(_COptional_CTradeLicense)>();
+
+late final _COptional_CChargingStationMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CChargingStation Function()>>('COptional_CChargingStationMakeDefault');
+late final _COptional_CChargingStationMakeDefault = _COptional_CChargingStationMakeDefaultPtr.asFunction<_COptional_CChargingStation Function()>();
+
+late final _COptional_CChargingStation_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CChargingStation)>>('COptional_CChargingStation_release');
+late final _COptional_CChargingStation_release = _COptional_CChargingStation_releasePtr.asFunction<void Function(_COptional_CChargingStation)>();
 late final _CPage_itemsPtr = _lookup<ffi.NativeFunction<_CArray_CDirectoryObject Function(_CPage)>>('CPage_items');
 late final _CPage_items = _CPage_itemsPtr.asFunction<_CArray_CDirectoryObject Function(_CPage)>();
 
@@ -42553,21 +43189,6 @@ late final _CFunction_G_zoomOutToFitForObjects_With_CBaseCamera_CArray_CSimpleMa
 late final _CFunction_G_zoomOutToFitForObjects_With_CBaseCamera_CArray_CSimpleMapObject_COptional_CStyleZoomToTiltRelation_COptional_CScreenSize = _CFunction_G_zoomOutToFitForObjects_With_CBaseCamera_CArray_CSimpleMapObject_COptional_CStyleZoomToTiltRelation_COptional_CScreenSizePtr.asFunction<_CCameraPosition Function(_CBaseCamera, _CArray_CSimpleMapObject, _COptional_CStyleZoomToTiltRelation, _COptional_CScreenSize)>();
 late final _CFunction_G_createImage_With_CContext_CImageLoaderPtr = _lookup<ffi.NativeFunction<_CImage Function(_CContext, _CImageLoader)>>('CFunction_G_createImage_With_CContext_CImageLoader');
 late final _CFunction_G_createImage_With_CContext_CImageLoader = _CFunction_G_createImage_With_CContext_CImageLoaderPtr.asFunction<_CImage Function(_CContext, _CImageLoader)>();
-late final _CFunction_G_createRasterTileDataSource_With_CContext_CString_CRasterUrlTemplatePtr = _lookup<ffi.NativeFunction<_CSource Function(_CContext, _CString, _CRasterUrlTemplate)>>('CFunction_G_createRasterTileDataSource_With_CContext_CString_CRasterUrlTemplate');
-late final _CFunction_G_createRasterTileDataSource_With_CContext_CString_CRasterUrlTemplate = _CFunction_G_createRasterTileDataSource_With_CContext_CString_CRasterUrlTemplatePtr.asFunction<_CSource Function(_CContext, _CString, _CRasterUrlTemplate)>();
-
-late final _CDefaultRasterUrlTemplateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CDefaultRasterUrlTemplate Function()>>('CDefaultRasterUrlTemplateMakeDefault');
-late final _CDefaultRasterUrlTemplateMakeDefault = _CDefaultRasterUrlTemplateMakeDefaultPtr.asFunction<_CDefaultRasterUrlTemplate Function()>();
-
-
-late final _CWmsRasterUrlTemplateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CWmsRasterUrlTemplate Function()>>('CWmsRasterUrlTemplateMakeDefault');
-late final _CWmsRasterUrlTemplateMakeDefault = _CWmsRasterUrlTemplateMakeDefaultPtr.asFunction<_CWmsRasterUrlTemplate Function()>();
-
-
-late final _CRasterUrlTemplate_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CRasterUrlTemplate)>>('CRasterUrlTemplate_release');
-late final _CRasterUrlTemplate_release = _CRasterUrlTemplate_releasePtr.asFunction<void Function(_CRasterUrlTemplate)>();
-late final _CRasterUrlTemplateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CRasterUrlTemplate Function()>>('CRasterUrlTemplateMakeDefault');
-late final _CRasterUrlTemplateMakeDefault = _CRasterUrlTemplateMakeDefaultPtr.asFunction<_CRasterUrlTemplate Function()>();
 late final _CFunction_G_createDefaultMaxTiltRestrictionPtr = _lookup<ffi.NativeFunction<_CStyleZoomToTiltRelation Function()>>('CFunction_G_createDefaultMaxTiltRestriction');
 late final _CFunction_G_createDefaultMaxTiltRestriction = _CFunction_G_createDefaultMaxTiltRestrictionPtr.asFunction<_CStyleZoomToTiltRelation Function()>();
 late final _CFunction_G_createDefaultStyleZoomToTiltRelationPtr = _lookup<ffi.NativeFunction<_CStyleZoomToTiltRelation Function()>>('CFunction_G_createDefaultStyleZoomToTiltRelation');
@@ -42591,6 +43212,35 @@ late final _CFunction_G_projectionZToStyleZ_With_CZoom_CLatitudePtr = _lookup<ff
 late final _CFunction_G_projectionZToStyleZ_With_CZoom_CLatitude = _CFunction_G_projectionZToStyleZ_With_CZoom_CLatitudePtr.asFunction<_CStyleZoom Function(_CZoom, _CLatitude)>();
 late final _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitudePtr = _lookup<ffi.NativeFunction<_CZoom Function(_CStyleZoom, _CLatitude)>>('CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitude');
 late final _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitude = _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitudePtr.asFunction<_CZoom Function(_CStyleZoom, _CLatitude)>();
+
+late final _CDefaultRasterUrlTemplateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CDefaultRasterUrlTemplate Function()>>('CDefaultRasterUrlTemplateMakeDefault');
+late final _CDefaultRasterUrlTemplateMakeDefault = _CDefaultRasterUrlTemplateMakeDefaultPtr.asFunction<_CDefaultRasterUrlTemplate Function()>();
+
+
+late final _CWmsRasterUrlTemplateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CWmsRasterUrlTemplate Function()>>('CWmsRasterUrlTemplateMakeDefault');
+late final _CWmsRasterUrlTemplateMakeDefault = _CWmsRasterUrlTemplateMakeDefaultPtr.asFunction<_CWmsRasterUrlTemplate Function()>();
+
+
+late final _CRasterUrlTemplate_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CRasterUrlTemplate)>>('CRasterUrlTemplate_release');
+late final _CRasterUrlTemplate_release = _CRasterUrlTemplate_releasePtr.asFunction<void Function(_CRasterUrlTemplate)>();
+late final _CRasterUrlTemplateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CRasterUrlTemplate Function()>>('CRasterUrlTemplateMakeDefault');
+late final _CRasterUrlTemplateMakeDefault = _CRasterUrlTemplateMakeDefaultPtr.asFunction<_CRasterUrlTemplate Function()>();
+
+late final _CRasterTileSource_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Int64 Function(ffi.Pointer<ffi.Void>)>>('CRasterTileSource_cg_objectIdentifier');
+late final _CRasterTileSource_cg_objectIdentifier = _CRasterTileSource_cg_objectIdentifierPtr.asFunction<int Function(ffi.Pointer<ffi.Void>)>();
+
+late final _CRasterTileSource_setOpacity_COpacityPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CRasterTileSource, _COpacity)>>('CRasterTileSource_setOpacity_COpacity');
+late final _CRasterTileSource_setOpacity_COpacity = _CRasterTileSource_setOpacity_COpacityPtr.asFunction<void Function(_CRasterTileSource, _COpacity)>();
+late final _CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplatePtr = _lookup<ffi.NativeFunction<_CRasterTileSource Function(_CContext, _CString, _CRasterUrlTemplate)>>('CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplate');
+late final _CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplate = _CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplatePtr.asFunction<_CRasterTileSource Function(_CContext, _CString, _CRasterUrlTemplate)>();
+
+late final _CRasterTileSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRasterTileSource_release');
+late final _CRasterTileSource_release = _CRasterTileSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+late final _CRasterTileSource_retainPtr = _lookup<ffi.NativeFunction<_CRasterTileSource Function(ffi.Pointer<ffi.Void>)>>('CRasterTileSource_retain');
+late final _CRasterTileSource_retain = _CRasterTileSource_retainPtr.asFunction<_CRasterTileSource Function(ffi.Pointer<ffi.Void>)>();
+late final _CRasterTileSourceMakeDefaultPtr = _lookup<ffi.NativeFunction<_CRasterTileSource Function()>>('CRasterTileSourceMakeDefault');
+late final _CRasterTileSourceMakeDefault = _CRasterTileSourceMakeDefaultPtr.asFunction<_CRasterTileSource Function()>();
+
 late final _CPackedMapState_showTrafficPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CPackedMapState)>>('CPackedMapState_showTraffic');
 late final _CPackedMapState_showTraffic = _CPackedMapState_showTrafficPtr.asFunction<bool Function(_CPackedMapState)>();
 late final _CPackedMapState_setShowTraffic_boolPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPackedMapState, ffi.Bool)>>('CPackedMapState_setShowTraffic_bool');

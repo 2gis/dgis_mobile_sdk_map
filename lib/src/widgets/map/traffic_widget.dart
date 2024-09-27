@@ -5,8 +5,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../generated/dart_bindings.dart' as sdk;
 import '../../util/plugin_name.dart';
-import '../map_widget_box_shadow.dart';
 import '../moving_segment_progress_indicator.dart';
+import '../widget_shadows.dart';
 
 import 'map_widget_color_scheme.dart';
 import 'themed_map_controlling_widget.dart';
@@ -95,8 +95,8 @@ class _TrafficWidgetState extends ThemedMapControllingWidgetState<TrafficWidget,
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    boxShadow: [
-                      MapWidgetBoxShadow(),
+                    boxShadow: const [
+                      WidgetShadows.mapWidgetBoxShadow,
                     ],
                     color:
                         currentState?.status == sdk.TrafficControlStatus.enabled

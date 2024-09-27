@@ -5,7 +5,7 @@ class _LibraryProvider {
 
   // Lazily initialized DynamicLibrary getter.
   ffi.DynamicLibrary get sdkLibrary =>
-      _sdkLibrary ??= ffi.DynamicLibrary.open(_libraryFullName);
+      _sdkLibrary ??= Platform.isIOS ? ffi.DynamicLibrary.process() : ffi.DynamicLibrary.open(_libraryFullName);
 
   String get _libraryFullName => _libraryFullNameGetter();
 
@@ -23,8 +23,6 @@ class _LibraryProvider {
       return 'libdgis_c_bindings_android.so';
     } else if (Platform.isLinux) {
       return 'libdgis_c_bindings_linux.so';
-    } else if (Platform.isIOS) {
-      return "DGis.framework/DGis";
     } else {
       throw UnsupportedError(
         'Unsupported platform ${Platform.operatingSystem}',

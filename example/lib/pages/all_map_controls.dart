@@ -14,7 +14,7 @@ class AllMapControlsPage extends StatefulWidget {
 
 class _AllMapControlsPageState extends State<AllMapControlsPage> {
   final mapWidgetController = sdk.MapWidgetController();
-  final sdkContext = sdk.DGis.initialize();
+  final sdkContext = AppContainer().initializeSdk();
 
   @override
   void initState() {
