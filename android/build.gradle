@@ -54,7 +54,7 @@ android {
     }
 
     dependencies {
-        implementation("ru.dgis.sdk.flutter_plugin:map:12.1.1") { changing = true }
+        implementation("ru.dgis.sdk.flutter_plugin:map:12.1.3") { changing = true }
         implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlin_version")
     }
 }
