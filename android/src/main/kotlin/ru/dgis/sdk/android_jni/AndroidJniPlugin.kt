@@ -20,7 +20,9 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
 import kotlin.reflect.KMutableProperty
 import kotlin.reflect.KProperty
+import kotlin.reflect.KVisibility
 import kotlin.reflect.jvm.isAccessible
+import kotlin.reflect.jvm.javaType
 
 /** AndroidJniPlugin */
 class AndroidJniPlugin: FlutterPlugin, MethodCallHandler {
@@ -65,34 +67,41 @@ class AndroidJniPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   private fun setup(context: Context) {
-    initializeLoggerWithReflection()
 
     val packageName = context.packageName
     val packageInfo = context.packageManager.getPackageInfo(packageName, 0)
     val versionName = packageInfo.versionName
     initializeJni(context, this.javaClass.classLoader, packageName, versionName)
+    initializeLoggerWithReflection()
   }
 
   private fun initializeLoggerWithReflection() {
     try {
-        val loggerClass = Class.forName("ru.dgis.sdk.Logger").kotlin
-        val loggerInstance = loggerClass.objectInstance ?: loggerClass.java.newInstance()
 
-        val initMethod = loggerClass.memberFunctions.find { it.name == "init" }
+        val loggerJavaClass = Class.forName("ru.dgis.sdk.Logger")
+        val loggerClass = loggerJavaClass.kotlin
+        val loggerInstance =  loggerJavaClass.getField("INSTANCE").get(null)
 
         val logOptionsClass = Class.forName("ru.dgis.sdk.platform.LogOptions").kotlin
         val logLevelClass = Class.forName("ru.dgis.sdk.platform.LogLevel").kotlin
 
+        val initMethod = loggerClass.functions.find { method ->
+            method.name == "init" &&
+            method.parameters.size == 2 && // 1 for 'this', 1 for the argument
+            method.parameters[1].type.javaType == logOptionsClass.java &&
+            method.visibility == KVisibility.PUBLIC
+        }
+
         val errorLevel = logLevelClass.java.enumConstants?.find { it.toString() == "ERROR" }
 
-        val logOptions = logOptionsClass.constructors.first().call(errorLevel, errorLevel, null)
+        val logOptions = logOptionsClass.constructors.find { method -> method.parameters.size == 3}!!.call(errorLevel, errorLevel, null)
 
         if (initMethod != null) {
             initMethod.isAccessible = true
             initMethod.call(loggerInstance, logOptions)
-            println("Method 'init' called successfully.")
+            Log.i("dgis", "Method 'init' called successfully.")
         } else {
-            println("Method 'init' not found.")
+            Log.i("dgis", "Method 'init' not found.")
         }
     } catch (e: Exception) {
         e.printStackTrace()
