@@ -1,1 +1,1 @@
- The changelog for this package is available on the official SDK site: https://docs.2gis.com/en/flutter/sdk/release
+ The changelog for this package is available on the official SDK site: https://docs.2gis.com/en/flutter/sdk/releases
