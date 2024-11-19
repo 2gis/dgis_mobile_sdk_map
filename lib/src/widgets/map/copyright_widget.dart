@@ -121,7 +121,10 @@ class _CopyrightWidgetState extends BaseMapWidgetState<CopyrightWidget> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<_CopyrightState>(
       valueListenable: copyrightState,
-      builder: (_, currentState, __) => _createCopyrightWidget(currentState),
+      builder: (_, currentState, __) => SafeArea(
+        minimum: widget._controller.copyrightAlignment.value.edgeInsets,
+        child: _createCopyrightWidget(currentState),
+      ),
     );
   }
 

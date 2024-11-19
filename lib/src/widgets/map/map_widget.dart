@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 
 import 'package:async/async.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../generated/dart_bindings.dart' as sdk;
@@ -14,6 +13,7 @@ import '../../platform/map/map_appearance.dart';
 import '../../platform/map/map_options.dart';
 import '../../platform/map/map_theme.dart';
 import '../../platform/map/touch_events_observer.dart';
+import '../common/measure_size.dart';
 import 'copyright_widget.dart';
 
 typedef OnMapReadyCallback = void Function(sdk.Map map);
@@ -349,54 +349,6 @@ class _TextureController {
   }
 }
 
-typedef OnWidgetSizeChange = void Function(Size size);
-
-class _MeasureSizeRenderObject extends RenderProxyBox {
-  Size? oldSize;
-  OnWidgetSizeChange onChange;
-
-  _MeasureSizeRenderObject(this.onChange);
-
-  @override
-  void performLayout() {
-    super.performLayout();
-
-    final newSize = child?.size;
-    if (newSize == null || oldSize == newSize) {
-      return;
-    }
-
-    oldSize = newSize;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      onChange(newSize);
-    });
-  }
-}
-
-class _MeasureSize extends SingleChildRenderObjectWidget {
-  final OnWidgetSizeChange onChange;
-
-  const _MeasureSize({
-    required this.onChange,
-    required Widget super.child,
-    // ignore: unused_element
-    super.key,
-  });
-
-  @override
-  RenderObject createRenderObject(BuildContext context) {
-    return _MeasureSizeRenderObject(onChange);
-  }
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    covariant _MeasureSizeRenderObject renderObject,
-  ) {
-    renderObject.onChange = onChange;
-  }
-}
-
 class _TouchPoint {
   final int _id;
   sdk.ScreenPoint _position;
@@ -519,7 +471,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     return Stack(
       children: [
         Center(
-          child: _MeasureSize(
+          child: MeasureSize(
             onChange: _updateMapSize,
             child: Listener(
               onPointerDown: (event) {
@@ -544,13 +496,10 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
           child: ValueListenableBuilder(
             valueListenable: mapWidgetController
                 ._copyrightWidgetController.copyrightAlignment,
-            builder: (_, copyrightAlignment, __) => Padding(
-              padding: copyrightAlignment.edgeInsets,
-              child: Align(
-                alignment: copyrightAlignment.alignment,
-                child: CopyrightWidget(
-                  controller: mapWidgetController._copyrightWidgetController,
-                ),
+            builder: (_, copyrightAlignment, __) => Align(
+              alignment: copyrightAlignment.alignment,
+              child: CopyrightWidget(
+                controller: mapWidgetController._copyrightWidgetController,
               ),
             ),
           ),

@@ -31,6 +31,7 @@ export 'src/platform/map/map_appearance.dart';
 export 'src/platform/map/map_options.dart';
 export 'src/platform/map/map_theme.dart';
 export 'src/platform/map/touch_events_observer.dart';
+export 'src/widgets/common/rounded_corners.dart';
 export 'src/widgets/directory/search.dart'
     show DgisSearchWidget, SearchResultBuilder;
 export 'src/widgets/either.dart';
@@ -45,3 +46,4 @@ export 'src/widgets/map/themed_map_controlling_widget_state.dart';
 export 'src/widgets/map/traffic_widget.dart';
 export 'src/widgets/map/zoom_widget.dart'
     show ZoomWidget, ZoomWidgetColorScheme;
+export 'src/widgets/widget_shadows.dart';

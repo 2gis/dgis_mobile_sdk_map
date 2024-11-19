@@ -14,7 +14,7 @@ A new Flutter FFI plugin project.
   s.public_header_files = 'Classes/**/*.h'
 
   s.dependency 'Flutter'
-  s.dependency 'DGisFlutterMapSDK', '12.1.3'
+  s.dependency 'DGisFlutterMapSDK', '12.2.0'
 
   s.frameworks          = 'CoreVideo', 'Foundation', 'Metal', 'UIKit'
   s.platform = :ios, '13.0'

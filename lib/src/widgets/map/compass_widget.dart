@@ -6,7 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../generated/dart_bindings.dart' as sdk;
 import '../../generated/stateful_channel.dart';
 import '../../util/plugin_name.dart';
-
+import '../common/dgis_color_scheme.dart';
 import 'map_widget_color_scheme.dart';
 import 'themed_map_controlling_widget.dart';
 import 'themed_map_controlling_widget_state.dart';
@@ -25,12 +25,12 @@ class CompassWidget
 
   /// Цветовая схема виджета для светлого режима по умолчанию.
   static const defaultLightColorScheme = CompassWidgetColorScheme(
-    surfaceColor: Color(0xffffffff),
+    surfaceColor: DgisColorScheme.whiteFiftyPercent,
   );
 
   /// Цветовая схема виджета для темного режима по умолчанию.
   static const defaultDarkColorScheme = CompassWidgetColorScheme(
-    surfaceColor: Color(0xff121212),
+    surfaceColor: DgisColorScheme.blackSixPercent,
   );
 
   @override

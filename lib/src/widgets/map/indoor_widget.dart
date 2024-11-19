@@ -80,6 +80,7 @@ class _IndoorWidgetState extends ThemedMapControllingWidgetState<IndoorWidget,
         if (levels.length > 5) {
           scrollController.addListener(updateShadows);
           updateShadows();
+          scrollToShowLevel(model.activeLevelIndex!, singleElementHeight);
         } else {
           updateShadows();
           scrollController.removeListener(updateShadows);
@@ -128,6 +129,7 @@ class _IndoorWidgetState extends ThemedMapControllingWidgetState<IndoorWidget,
                   controller: scrollController,
                   reverse: true,
                   itemCount: quantity,
+                  padding: EdgeInsets.zero,
                   itemBuilder: (context, index) {
                     return ValueListenableBuilder(
                       valueListenable: activeLevel,
@@ -270,18 +272,18 @@ class _IndoorWidgetState extends ThemedMapControllingWidgetState<IndoorWidget,
     }
 
     final elementIndex = index;
-    const minScrollY = 0.0;
-    final maxScrollY = (count - countBeforeScroll) * elementHeight;
+    final minScrollY = scrollController.position.minScrollExtent;
+    final maxScrollY = scrollController.position.maxScrollExtent;
 
     final targetY = elementIndex * elementHeight;
 
     if (targetY - scrollController.offset < elementHeight) {
       scrollController.jumpTo(max(minScrollY, targetY - elementHeight));
+      return;
     }
-    if (targetY - scrollController.offset >
-        (countBeforeScroll - 3) * elementHeight) {
+    if (targetY + scrollController.offset > elementHeight) {
       scrollController.jumpTo(
-        min(maxScrollY, targetY - (countBeforeScroll - 3) * elementHeight),
+        min(maxScrollY, targetY - elementHeight),
       );
     }
   }
@@ -294,7 +296,7 @@ class _IndoorWidgetState extends ThemedMapControllingWidgetState<IndoorWidget,
       final currentScroll = scrollController.offset;
 
       showTopShadow.value = shouldShowAnyShadow && currentScroll < maxScroll;
-      showBottomShadow.value = shouldShowAnyShadow && currentScroll > 0.0;
+      showBottomShadow.value = shouldShowAnyShadow && currentScroll > 20.0;
     }
   }
 }

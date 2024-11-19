@@ -1,0 +1,211 @@
+{
+   "@@locale": "en",
+   "dgis_route_re_search": "Route recalculation",
+   "dgis_missing_gps": "No GPS signal received",
+   "dgis_you_have_arrived": "You have arrived!",
+   "dgis_better_route_has_been_found": "Better route has been found",
+   "dgis_d_days": "d",
+   "dgis_d_days_format": "{count} d",
+   "@dgis_d_days_format": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_h__hours": "h",
+   "dgis_h__hours_format": "{count} h",
+   "@dgis_h__hours_format": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_m__minutes": "m",
+   "dgis_m__minutes_format": "{count} m",
+   "@dgis_m__minutes_format": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_min__minutes": "min",
+   "dgis_min__minutes_format": "{count} min",
+   "@dgis_min__minutes_format": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_m__meters": "m",
+   "dgis_m__meters_format": "{count} m",
+   "@dgis_m__meters_format": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_km": "km",
+   "dgis_km_format": "{count} km",
+   "@dgis_km_format": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_km_per_h": "km/h",
+   "dgis_km_per_h_format": "{count} km/h",
+   "@dgis_km_per_h_format": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_road_exit_caption": "Exit",
+   "dgis_road_exit_format": "Exit {number}",
+   "@dgis_road_exit_format": {
+      "placeholders": {
+         "number":{
+            "type": "int",
+            "example": "1"
+         }
+      }
+   },
+   "dgis_on_foot_duration": "On foot {duration}",
+   "@dgis_on_foot_duration": {
+      "placeholders": {
+         "duration": {
+            "type": "String",
+            "example": "10"
+         }
+      }
+   },
+   "dgis_on_foot_distance": "{distance} on foot",
+   "@dgis_on_foot_distance": {
+      "placeholders": {
+         "distance": {
+            "type": "String",
+            "example": "400"
+         }
+      }
+   },
+   "dgis_route_start": "Route start",
+   "dgis_route_finish": "Route finish",
+   "dgis_direct_route": "Direct route",
+   "dgis_get_off_after": "Get off after: {after}",
+   "@dgis_get_off_after": {
+      "placeholders": {
+         "after": {
+            "type": "String",
+            "example": "5"
+         }
+      }
+   },
+   "dgis_transfers": "{count, plural, =0{No transfers} =1{1 transfer} other{{count} transfers}}",
+   "@dgis_transfers": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_stops": "{count, plural, =0{No stops} =1{1 stop} other{{count} stops}}",
+   "@dgis_stops": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_stations": "{count, plural, =0{No stations} =1{1 station} other{{count} stations}} ",
+   "@dgis_stations": {
+      "placeholders": {
+         "count": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_public_transport_type_bus": "Bus",
+   "dgis_public_transport_type_trolleybus": "Trolleybus",
+   "dgis_public_transport_type_tram": "Tram",
+   "dgis_public_transport_type_shuttle_bus": "Shuttle bus",
+   "dgis_public_transport_type_metro": "Metro",
+   "dgis_public_transport_type_suburban_train": "Suburban train",
+   "dgis_public_transport_type_funicular_railway": "Funicular railway",
+   "dgis_public_transport_type_monorail": "Monorail",
+   "dgis_public_transport_type_waterway": "Waterway transport",
+   "dgis_public_transport_type_cable_car": "Cable car",
+   "dgis_public_transport_type_speed_tram": "Speed tram",
+   "dgis_public_transport_type_premetro": "Premetro",
+   "dgis_public_transport_type_light_metro": "Light metro",
+   "dgis_public_transport_type_aeroexpress": "Aeroexpress",
+   "dgis_public_transport_type_mcc": "MCC",
+   "dgis_public_transport_type_mcd": "MCD",
+   "dgis_navi_arrival": "arrival",
+   "dgis_navi_sound_settings_title": "Sound settings",
+   "dgis_navi_sound_settings_subtitle_on": "Maneuvers turned on",
+   "dgis_navi_sound_settings_subtitle_off": "Maneuvers turned off",
+   "dgis_navi_parking_lots_on_the_map": "Parking lots on the map",
+   "dgis_navi_traffic_jams_on_the_road": "Traffic jams on the roads",
+   "dgis_navi_end_the_trip": "End the trip",
+   "dgis_navi_alert_has_been_added": "Alert has been added",
+   "dgis_navi_failed_to_add_alert": "Failed to add alert",
+   "dgis_navi_better_route_found_with_time": "Found a route {minutes} min faster",
+   "@dgis_navi_better_route_found_with_time": {
+      "placeholders": {
+         "minutes": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_navi_longer_route_found_with_time": "Found a route {minutes} min longer",
+   "@dgis_navi_longer_route_found_with_time": {
+      "placeholders": {
+         "minutes": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_navi_route_found_same_time": "Found a route. Same time",
+   "dgis_navi_better_route_found_without_time": "There is a better route",
+   "dgis_navi_better_route_cancel": "Cancel",
+   "dgis_navi_route_re_search": "Updating the route",
+   "dgis_navi_missing_gps": "GPS signal lost",
+   "dgis_navi_maneuver_next": "Next",
+   "dgis_navi_maneuver_exit_named": "Exit {name}",
+   "@dgis_navi_maneuver_exit_named": {
+      "placeholders": {
+         "name": {
+            "type": "String"
+         }
+      }
+   },
+   "dgis_navi_maneuver_exit_number": "Exit {number}",
+   "@dgis_navi_maneuver_exit_number": {
+      "placeholders": {
+         "number": {
+            "type": "num"
+         }
+      }
+   },
+   "dgis_navi_parking": "Parking lots",
+   "dgis_navi_finish": "You have arrived!",
+   "dgis_navi_freeroam_ride_management": "Manage the trip",
+   "dgis_navi_view_route": "View route",
+   "dgis_navi_continue_the_trip": "Continue the trip",
+   "dgis_navi_indoor_navigation": "Indoor navigation",
+   "dgis_navi_floor": "{floor} floor",
+   "@dgis_navi_floor": {
+      "placeholders": {
+         "floor": {
+            "type": "String"
+         }
+      }
+   }
+}
