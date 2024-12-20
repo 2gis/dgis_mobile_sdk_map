@@ -13,11 +13,13 @@ export 'src/generated/dart_bindings.dart'
         MapInternalMethods,
         MapRenderer,
         MapSurfaceProvider,
+        ModelDataLoader,
         PlatformLocaleManager,
         ProductType,
         calculateBearing,
         calculateDistance,
         createImage,
+        createModelData,
         downloadData,
         makeSystemContext,
         move,
@@ -30,6 +32,7 @@ export 'src/platform/map/image_loader.dart';
 export 'src/platform/map/map_appearance.dart';
 export 'src/platform/map/map_options.dart';
 export 'src/platform/map/map_theme.dart';
+export 'src/platform/map/model_loader.dart';
 export 'src/platform/map/touch_events_observer.dart';
 export 'src/widgets/common/rounded_corners.dart';
 export 'src/widgets/directory/search.dart'

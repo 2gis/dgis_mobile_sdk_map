@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 class DgisColorScheme {
+  DgisColorScheme._();
+
   static const Color whiteFiftyPercent = Color(0x80ffffff);
   static const Color surfaceLight = Color(0xffffffff);
   static const Color dimmedSurfaceLight = Color(0xffeeeeee);
@@ -25,5 +27,14 @@ class DgisColorScheme {
   static const Color trafficRed = Color(0xffd15536);
   static const Color whiteNinetyOnePercent = Color(0xE8ffffff);
   static const Color darkGreyNinetyOnePercent = Color(0xE8222222);
+  static const Color surfaceDarkGrey = Color(0xff222222);
   static const Color textDarkGrey = Color(0xff141414);
+  static const Color surfaceGrey = Color(0xfff1f1f1);
+  static const Color primaryTextColorOnLight = Color(0xff141414);
+  static const Color secondaryTextColorOnLight = Color(0xff898989);
+  static const Color primaryTextColorOnDark = Color(0xFFFFFFFF);
+  static const Color secondaryTextColorOnDark = Color(0xFFFFFFFF);
+  static const Color textColorOnRed = Color(0xFFFFFFFF);
+  static const Color brightBlue = Color(0xff3588FD);
+  static const Color textColorOnBlue = Color(0xFFFFFFFF);
 }

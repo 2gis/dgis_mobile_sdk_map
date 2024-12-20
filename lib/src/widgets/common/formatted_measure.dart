@@ -1,12 +1,29 @@
 import 'dart:math';
+import 'package:flutter/widgets.dart';
 import '../../../l10n/generated/dgis_localizations.dart';
 
 /// Value with units of measurement, for example ("1.5", "km")
+@immutable
 class FormattedMeasure {
-  FormattedMeasure(this.value, this.unit);
+  const FormattedMeasure(this.value, this.unit);
 
   final String value;
   final String unit;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+
+    return other is FormattedMeasure &&
+        other.value == value &&
+        other.unit == unit;
+  }
+
+  @override
+  int get hashCode => Object.hash(value, unit);
+
+  @override
+  String toString() => 'FormattedMeasure($value $unit)';
 }
 
 FormattedMeasure metersToFormattedMeasure(
