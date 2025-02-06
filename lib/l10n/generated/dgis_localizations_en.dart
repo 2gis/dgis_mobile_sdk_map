@@ -221,16 +221,16 @@ class DgisLocalizationsEn extends DgisLocalizations {
 
   @override
   String dgis_navi_better_route_found_with_time(num minutes) {
-    return 'Found a route $minutes min faster';
+    return 'Found a route\n$minutes min faster';
   }
 
   @override
   String dgis_navi_longer_route_found_with_time(num minutes) {
-    return 'Found a route $minutes min longer';
+    return 'Found a route\n$minutes min longer';
   }
 
   @override
-  String get dgis_navi_route_found_same_time => 'Found a route. Same time';
+  String get dgis_navi_route_found_same_time => 'Found a route.\nSame time';
 
   @override
   String get dgis_navi_better_route_found_without_time => 'There is a better route';

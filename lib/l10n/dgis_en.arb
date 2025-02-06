@@ -156,7 +156,7 @@
    "dgis_navi_end_the_trip": "End the trip",
    "dgis_navi_alert_has_been_added": "Alert has been added",
    "dgis_navi_failed_to_add_alert": "Failed to add alert",
-   "dgis_navi_better_route_found_with_time": "Found a route {minutes} min faster",
+   "dgis_navi_better_route_found_with_time": "Found a route\n{minutes} min faster",
    "@dgis_navi_better_route_found_with_time": {
       "placeholders": {
          "minutes": {
@@ -164,7 +164,7 @@
          }
       }
    },
-   "dgis_navi_longer_route_found_with_time": "Found a route {minutes} min longer",
+   "dgis_navi_longer_route_found_with_time": "Found a route\n{minutes} min longer",
    "@dgis_navi_longer_route_found_with_time": {
       "placeholders": {
          "minutes": {
@@ -172,7 +172,7 @@
          }
       }
    },
-   "dgis_navi_route_found_same_time": "Found a route. Same time",
+   "dgis_navi_route_found_same_time": "Found a route.\nSame time",
    "dgis_navi_better_route_found_without_time": "There is a better route",
    "dgis_navi_better_route_cancel": "Cancel",
    "dgis_navi_route_re_search": "Updating the route",

@@ -422,19 +422,19 @@ abstract class DgisLocalizations {
   /// No description provided for @dgis_navi_better_route_found_with_time.
   ///
   /// In en, this message translates to:
-  /// **'Found a route {minutes} min faster'**
+  /// **'Found a route\n{minutes} min faster'**
   String dgis_navi_better_route_found_with_time(num minutes);
 
   /// No description provided for @dgis_navi_longer_route_found_with_time.
   ///
   /// In en, this message translates to:
-  /// **'Found a route {minutes} min longer'**
+  /// **'Found a route\n{minutes} min longer'**
   String dgis_navi_longer_route_found_with_time(num minutes);
 
   /// No description provided for @dgis_navi_route_found_same_time.
   ///
   /// In en, this message translates to:
-  /// **'Found a route. Same time'**
+  /// **'Found a route.\nSame time'**
   String get dgis_navi_route_found_same_time;
 
   /// No description provided for @dgis_navi_better_route_found_without_time.

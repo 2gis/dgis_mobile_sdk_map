@@ -224,16 +224,16 @@ class DgisLocalizationsRu extends DgisLocalizations {
 
   @override
   String dgis_navi_better_route_found_with_time(num minutes) {
-    return 'Найден маршрут на $minutes мин быстрее';
+    return 'Найден маршрут\nна $minutes мин быстрее';
   }
 
   @override
   String dgis_navi_longer_route_found_with_time(num minutes) {
-    return 'Найден маршрут на $minutes мин дольше';
+    return 'Найден маршрут\nна $minutes мин дольше';
   }
 
   @override
-  String get dgis_navi_route_found_same_time => 'Найден маршрут. То же время';
+  String get dgis_navi_route_found_same_time => 'Найден маршрут.\nТо же время';
 
   @override
   String get dgis_navi_better_route_found_without_time => 'Есть маршрут лучше';
