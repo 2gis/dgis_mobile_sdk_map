@@ -14097,9 +14097,9 @@ class SearchQueryBuilder implements ffi.Finalizable {
    Для остальных запросов ограничение от 0 до 50000.
   */
   SearchQueryBuilder setRadius(
-    Meter geoPoint
+    Meter radius
   )  {
-    var _a1 = geoPoint._copyFromDartTo_CMeter();
+    var _a1 = radius._copyFromDartTo_CMeter();
     _CSearchQueryBuilder res = _CSearchQueryBuilder_setRadius_CMeter(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
     final t = res._toDart();
     res._releaseIntermediate();
@@ -30088,6 +30088,40 @@ class Projection implements ffi.Finalizable {
     return res._toDart();
   }
 
+  /**
+   Вычисление расстояния между точками на карте, соответствующими указанным точкам на экране, в метрах.
+  
+   - Note: Функция возвращает пустое значение, если одна или обе указанных точки экрана находятся за пределами проекции карты.
+  */
+  Meter? distance_on_screen(
+    ScreenPoint fromPoint,
+    ScreenPoint toPoint
+  )  {
+    var _a1 = fromPoint._copyFromDartTo_CScreenPoint();
+    var _a2 = toPoint._copyFromDartTo_CScreenPoint();
+    _COptional_CMeter res = _CProjection_distance_on_screen_CScreenPoint_CScreenPoint(_CProjectionMakeDefault().._impl=_self, _a1, _a2);
+    return res._toDart();
+  }
+
+  /**
+   Вычисление расстояния между точками на экране, соответствующими указанным точкам на карте, в пикселях.
+  
+   - Note: Функция возвращает пустое значение если одна или обе точки на карте:
+   - имеют невалидное значение
+   (latitude лежит вне диапазона [-90; 90] или longitude лежит вне диапазона [-180; 180]).
+   - находятся выше плоскости проекции карты на экран.
+   - находятся слишком далеко за пределами экрана и возникает переполнение типа.
+  */
+  LogicalPixel? distanceOnScreen(
+    GeoPoint fromGeoPoint,
+    GeoPoint toGeoPoint
+  )  {
+    var _a1 = fromGeoPoint._copyFromDartTo_CGeoPoint();
+    var _a2 = toGeoPoint._copyFromDartTo_CGeoPoint();
+    _COptional_CLogicalPixel res = _CProjection_distanceOnScreen_CGeoPoint_CGeoPoint(_CProjectionMakeDefault().._impl=_self, _a1, _a2);
+    return res._toDart();
+  }
+
 }
 
 // MARK: - Projection <-> CProjection
@@ -30116,6 +30150,78 @@ extension _CProjectionToDart on _CProjection {
 extension _DartToCProjection on Projection {
   _CProjection _copyFromDartTo_CProjection() {
     return (_CProjectionMakeDefault().._impl=_self)._retain();
+  }
+}
+// MARK: - Meter? <-> _COptional_CMeter
+
+final class _COptional_CMeter extends ffi.Struct {
+  
+  external _CMeter value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CMeterBasicFunctions on _COptional_CMeter {
+  void _releaseIntermediate() {
+    
+  }
+}
+
+extension _COptional_CMeterToDart on _COptional_CMeter {
+  Meter? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CMeter on Meter? {
+  _COptional_CMeter _copyFromDartTo_COptional_CMeter() {
+    final cOptional = _COptional_CMeterMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CMeter();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
+// MARK: - LogicalPixel? <-> _COptional_CLogicalPixel
+
+final class _COptional_CLogicalPixel extends ffi.Struct {
+  
+  external _CLogicalPixel value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CLogicalPixelBasicFunctions on _COptional_CLogicalPixel {
+  void _releaseIntermediate() {
+    
+  }
+}
+
+extension _COptional_CLogicalPixelToDart on _COptional_CLogicalPixel {
+  LogicalPixel? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CLogicalPixel on LogicalPixel? {
+  _COptional_CLogicalPixel _copyFromDartTo_COptional_CLogicalPixel() {
+    final cOptional = _COptional_CLogicalPixelMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CLogicalPixel();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
   }
 }
 // MARK: - BaseCamera
@@ -45108,6 +45214,10 @@ late final _CProjection_map_to_screen_with_geo_point_with_elevation_CGeoPointWit
 late final _CProjection_map_to_screen_with_geo_point_with_elevation_CGeoPointWithElevation = _CProjection_map_to_screen_with_geo_point_with_elevation_CGeoPointWithElevationPtr.asFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPointWithElevation)>();
 late final _CProjection_screenToMapClipped_CScreenPointPtr = _lookup<ffi.NativeFunction<_CGeoPoint Function(_CProjection, _CScreenPoint)>>('CProjection_screenToMapClipped_CScreenPoint');
 late final _CProjection_screenToMapClipped_CScreenPoint = _CProjection_screenToMapClipped_CScreenPointPtr.asFunction<_CGeoPoint Function(_CProjection, _CScreenPoint)>();
+late final _CProjection_distance_on_screen_CScreenPoint_CScreenPointPtr = _lookup<ffi.NativeFunction<_COptional_CMeter Function(_CProjection, _CScreenPoint, _CScreenPoint)>>('CProjection_distance_on_screen_CScreenPoint_CScreenPoint');
+late final _CProjection_distance_on_screen_CScreenPoint_CScreenPoint = _CProjection_distance_on_screen_CScreenPoint_CScreenPointPtr.asFunction<_COptional_CMeter Function(_CProjection, _CScreenPoint, _CScreenPoint)>();
+late final _CProjection_distanceOnScreen_CGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFunction<_COptional_CLogicalPixel Function(_CProjection, _CGeoPoint, _CGeoPoint)>>('CProjection_distanceOnScreen_CGeoPoint_CGeoPoint');
+late final _CProjection_distanceOnScreen_CGeoPoint_CGeoPoint = _CProjection_distanceOnScreen_CGeoPoint_CGeoPointPtr.asFunction<_COptional_CLogicalPixel Function(_CProjection, _CGeoPoint, _CGeoPoint)>();
 
 late final _CProjection_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CProjection_release');
 late final _CProjection_release = _CProjection_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
@@ -45116,6 +45226,12 @@ late final _CProjection_retain = _CProjection_retainPtr.asFunction<_CProjection 
 late final _CProjectionMakeDefaultPtr = _lookup<ffi.NativeFunction<_CProjection Function()>>('CProjectionMakeDefault');
 late final _CProjectionMakeDefault = _CProjectionMakeDefaultPtr.asFunction<_CProjection Function()>();
 
+
+late final _COptional_CMeterMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CMeter Function()>>('COptional_CMeterMakeDefault');
+late final _COptional_CMeterMakeDefault = _COptional_CMeterMakeDefaultPtr.asFunction<_COptional_CMeter Function()>();
+
+late final _COptional_CLogicalPixelMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CLogicalPixel Function()>>('COptional_CLogicalPixelMakeDefault');
+late final _COptional_CLogicalPixelMakeDefault = _COptional_CLogicalPixelMakeDefaultPtr.asFunction<_COptional_CLogicalPixel Function()>();
 late final _CBaseCamera_projectionPtr = _lookup<ffi.NativeFunction<_CProjection Function(_CBaseCamera)>>('CBaseCamera_projection');
 late final _CBaseCamera_projection = _CBaseCamera_projectionPtr.asFunction<_CProjection Function(_CBaseCamera)>();
 late final _CBaseCamera_positionChannelPtr = _lookup<ffi.NativeFunction<_CStatefulChannel_CCameraPosition Function(_CBaseCamera)>>('CBaseCamera_positionChannel');
