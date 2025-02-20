@@ -30049,11 +30049,11 @@ class Projection implements ffi.Finalizable {
    - если указанная точка карты находится выше плоскости проекции карты на экран.
    - если указанная точка карты находится слишком далеко за пределами экрана и возникает переполнение типа.
   */
-  ScreenPoint? map_to_screen_with_geo_point(
+  ScreenPoint? mapToScreenWithGeoPoint(
     GeoPoint point
   )  {
     var _a1 = point._copyFromDartTo_CGeoPoint();
-    _COptional_CScreenPoint res = _CProjection_map_to_screen_with_geo_point_CGeoPoint(_CProjectionMakeDefault().._impl=_self, _a1);
+    _COptional_CScreenPoint res = _CProjection_mapToScreenWithGeoPoint_CGeoPoint(_CProjectionMakeDefault().._impl=_self, _a1);
     return res._toDart();
   }
 
@@ -30066,11 +30066,11 @@ class Projection implements ffi.Finalizable {
    - если указанная точка карты находится выше плоскости проекции карты на экран.
    - если указанная точка карты находится слишком далеко за пределами экрана и возникает переполнение типа.
   */
-  ScreenPoint? map_to_screen_with_geo_point_with_elevation(
+  ScreenPoint? mapToScreenWithGeoPointWithElevation(
     GeoPointWithElevation point
   )  {
     var _a1 = point._copyFromDartTo_CGeoPointWithElevation();
-    _COptional_CScreenPoint res = _CProjection_map_to_screen_with_geo_point_with_elevation_CGeoPointWithElevation(_CProjectionMakeDefault().._impl=_self, _a1);
+    _COptional_CScreenPoint res = _CProjection_mapToScreenWithGeoPointWithElevation_CGeoPointWithElevation(_CProjectionMakeDefault().._impl=_self, _a1);
     return res._toDart();
   }
 
@@ -30093,13 +30093,13 @@ class Projection implements ffi.Finalizable {
   
    - Note: Функция возвращает пустое значение, если одна или обе указанных точки экрана находятся за пределами проекции карты.
   */
-  Meter? distance_on_screen(
+  Meter? distanceOnMap(
     ScreenPoint fromPoint,
     ScreenPoint toPoint
   )  {
     var _a1 = fromPoint._copyFromDartTo_CScreenPoint();
     var _a2 = toPoint._copyFromDartTo_CScreenPoint();
-    _COptional_CMeter res = _CProjection_distance_on_screen_CScreenPoint_CScreenPoint(_CProjectionMakeDefault().._impl=_self, _a1, _a2);
+    _COptional_CMeter res = _CProjection_distanceOnMap_CScreenPoint_CScreenPoint(_CProjectionMakeDefault().._impl=_self, _a1, _a2);
     return res._toDart();
   }
 
@@ -45208,14 +45208,14 @@ late final _CProjection_cg_objectIdentifier = _CProjection_cg_objectIdentifierPt
 
 late final _CProjection_screenToMap_CScreenPointPtr = _lookup<ffi.NativeFunction<_COptional_CGeoPoint Function(_CProjection, _CScreenPoint)>>('CProjection_screenToMap_CScreenPoint');
 late final _CProjection_screenToMap_CScreenPoint = _CProjection_screenToMap_CScreenPointPtr.asFunction<_COptional_CGeoPoint Function(_CProjection, _CScreenPoint)>();
-late final _CProjection_map_to_screen_with_geo_point_CGeoPointPtr = _lookup<ffi.NativeFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPoint)>>('CProjection_map_to_screen_with_geo_point_CGeoPoint');
-late final _CProjection_map_to_screen_with_geo_point_CGeoPoint = _CProjection_map_to_screen_with_geo_point_CGeoPointPtr.asFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPoint)>();
-late final _CProjection_map_to_screen_with_geo_point_with_elevation_CGeoPointWithElevationPtr = _lookup<ffi.NativeFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPointWithElevation)>>('CProjection_map_to_screen_with_geo_point_with_elevation_CGeoPointWithElevation');
-late final _CProjection_map_to_screen_with_geo_point_with_elevation_CGeoPointWithElevation = _CProjection_map_to_screen_with_geo_point_with_elevation_CGeoPointWithElevationPtr.asFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPointWithElevation)>();
+late final _CProjection_mapToScreenWithGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPoint)>>('CProjection_mapToScreenWithGeoPoint_CGeoPoint');
+late final _CProjection_mapToScreenWithGeoPoint_CGeoPoint = _CProjection_mapToScreenWithGeoPoint_CGeoPointPtr.asFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPoint)>();
+late final _CProjection_mapToScreenWithGeoPointWithElevation_CGeoPointWithElevationPtr = _lookup<ffi.NativeFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPointWithElevation)>>('CProjection_mapToScreenWithGeoPointWithElevation_CGeoPointWithElevation');
+late final _CProjection_mapToScreenWithGeoPointWithElevation_CGeoPointWithElevation = _CProjection_mapToScreenWithGeoPointWithElevation_CGeoPointWithElevationPtr.asFunction<_COptional_CScreenPoint Function(_CProjection, _CGeoPointWithElevation)>();
 late final _CProjection_screenToMapClipped_CScreenPointPtr = _lookup<ffi.NativeFunction<_CGeoPoint Function(_CProjection, _CScreenPoint)>>('CProjection_screenToMapClipped_CScreenPoint');
 late final _CProjection_screenToMapClipped_CScreenPoint = _CProjection_screenToMapClipped_CScreenPointPtr.asFunction<_CGeoPoint Function(_CProjection, _CScreenPoint)>();
-late final _CProjection_distance_on_screen_CScreenPoint_CScreenPointPtr = _lookup<ffi.NativeFunction<_COptional_CMeter Function(_CProjection, _CScreenPoint, _CScreenPoint)>>('CProjection_distance_on_screen_CScreenPoint_CScreenPoint');
-late final _CProjection_distance_on_screen_CScreenPoint_CScreenPoint = _CProjection_distance_on_screen_CScreenPoint_CScreenPointPtr.asFunction<_COptional_CMeter Function(_CProjection, _CScreenPoint, _CScreenPoint)>();
+late final _CProjection_distanceOnMap_CScreenPoint_CScreenPointPtr = _lookup<ffi.NativeFunction<_COptional_CMeter Function(_CProjection, _CScreenPoint, _CScreenPoint)>>('CProjection_distanceOnMap_CScreenPoint_CScreenPoint');
+late final _CProjection_distanceOnMap_CScreenPoint_CScreenPoint = _CProjection_distanceOnMap_CScreenPoint_CScreenPointPtr.asFunction<_COptional_CMeter Function(_CProjection, _CScreenPoint, _CScreenPoint)>();
 late final _CProjection_distanceOnScreen_CGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFunction<_COptional_CLogicalPixel Function(_CProjection, _CGeoPoint, _CGeoPoint)>>('CProjection_distanceOnScreen_CGeoPoint_CGeoPoint');
 late final _CProjection_distanceOnScreen_CGeoPoint_CGeoPoint = _CProjection_distanceOnScreen_CGeoPoint_CGeoPointPtr.asFunction<_COptional_CLogicalPixel Function(_CProjection, _CGeoPoint, _CGeoPoint)>();
 
