@@ -6229,6 +6229,161 @@ extension _DartTo_CFormattingType on FormattingType {
   }
 }
 	
+// MARK: - ObjectType
+
+/** Тип объекта справочника. */
+enum ObjectType {
+  /** Административная единица. */
+  admDiv(0),
+  /** Город. */
+  admDivCity(1),
+  /** Страна. */
+  admDivCountry(2),
+  /** Район. */
+  admDivDistrict(3),
+  /** Район области. */
+  admDivDistrictArea(4),
+  /** Округ. */
+  admDivDivision(5),
+  /** Жилмассив, микрорайон. */
+  admDivLivingArea(6),
+  /** Разные площадные объекты: парки, пляжи, территории баз отдыха, озёра и прочие места. */
+  admDivPlace(7),
+  /** Регион (область/край/республика и т.п.). */
+  admDivRegion(8),
+  /** Населённый пункт (деревня, посёлок и т.п.). */
+  admDivSettlement(9),
+  /** Достопримечательность. */
+  attraction(10),
+  /** Компания. */
+  branch(11),
+  /** Здание. */
+  building(12),
+  /** Глобальная координата в системе координат WGS84 в формате lon, lat. */
+  coordinates(13),
+  /** Перекрёсток. */
+  crossroad(14),
+  /** Проход/проезд. */
+  gate(15),
+  /** Знак километра. */
+  kilometerRoadSign(16),
+  /** Парковка. */
+  parking(17),
+  /** Дорога. */
+  road(18),
+  /** Маршрут. */
+  route(19),
+  /** Остановки или станция общественного транспорта. */
+  station(20),
+  /** Вход на станцию. */
+  stationEntrance(21),
+  /** Станция метро. */
+  stationMetro(22),
+  /** Остановочная платформа. */
+  stationPlatform(23),
+  /** Улица. */
+  street(24),
+  /** На случай получения неожиданного типа. */
+  unknown(25),
+  ;
+
+  const ObjectType(this.rawValue);
+  final int rawValue;
+
+  static ObjectType getByValue(int value) {
+    return ObjectType.values.firstWhere((x) => x.rawValue == value);
+  }
+}
+
+
+final class _CObjectType extends ffi.Struct {
+  @ffi.Uint32()
+  external int rawValue;
+}
+
+extension _CObjectTypeBasicFunctions on _CObjectType {
+  void _releaseIntermediate() {
+  }
+}
+
+extension _CObjectTypeToDart on _CObjectType {
+  ObjectType _toDart() {
+    return ObjectType.getByValue(this.rawValue);
+  }
+}
+
+extension _DartTo_CObjectType on ObjectType {
+  _CObjectType _copyFromDartTo_CObjectType() {
+    return _CObjectTypeMakeDefault()..rawValue = this.rawValue;
+  }
+}
+	
+// MARK: - GroupItem
+
+/** Элемент объединенной карточки, содержащий информацию об объекте. */
+class GroupItem {
+  /** Идентификатор объекта. */
+  final DgisObjectId id;
+  /** Тип объекта. */
+  final ObjectType type;
+
+  const GroupItem({
+    required this.id,
+    required this.type
+  });
+
+  GroupItem copyWith({
+    DgisObjectId? id,
+    ObjectType? type
+  }) {
+    return GroupItem(
+      id: id ?? this.id,
+      type: type ?? this.type
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is GroupItem &&
+    other.runtimeType == runtimeType &&
+    other.id == id &&
+    other.type == type;
+
+  @override
+  int get hashCode {
+    return Object.hash(id, type);
+  }
+
+}
+final class _CGroupItem extends ffi.Struct {
+  external _CDgisObjectId id;
+
+  external _CObjectType type;
+
+}
+// MARK: - GroupItem <-> _CGroupItem
+
+extension _CGroupItemToDart on _CGroupItem {
+  GroupItem _toDart() {
+    return GroupItem(
+      id: this.id._toDart(),
+      type: this.type._toDart()
+    );
+  }
+}
+
+extension _DartTo_CGroupItem on GroupItem {
+  _CGroupItem _copyFromDartTo_CGroupItem() {
+    final res = _CGroupItemMakeDefault();
+    res.id = this.id._copyFromDartTo_CDgisObjectId();
+    res.type = this.type._copyFromDartTo_CObjectType();
+    return res;
+  }
+}
+extension _CGroupItemRelease on _CGroupItem {
+  void _releaseIntermediate() {
+  }
+}
+
 // MARK: - Aggregate
 
 /** Обобщенное описание станции зарядки автомобилей. */
@@ -6952,95 +7107,6 @@ extension _CArray_CRubricIdBasicFunctions on _CArray_CRubricId {
     final result = List<RubricId>.from(_listToFill);
     _listToFill.clear();
     return result;
-  }
-}
-	
-// MARK: - ObjectType
-
-/** Тип объекта справочника. */
-enum ObjectType {
-  /** Административная единица. */
-  admDiv(0),
-  /** Город. */
-  admDivCity(1),
-  /** Страна. */
-  admDivCountry(2),
-  /** Район. */
-  admDivDistrict(3),
-  /** Район области. */
-  admDivDistrictArea(4),
-  /** Округ. */
-  admDivDivision(5),
-  /** Жилмассив, микрорайон. */
-  admDivLivingArea(6),
-  /** Разные площадные объекты: парки, пляжи, территории баз отдыха, озёра и прочие места. */
-  admDivPlace(7),
-  /** Регион (область/край/республика и т.п.). */
-  admDivRegion(8),
-  /** Населённый пункт (деревня, посёлок и т.п.). */
-  admDivSettlement(9),
-  /** Достопримечательность. */
-  attraction(10),
-  /** Компания. */
-  branch(11),
-  /** Здание. */
-  building(12),
-  /** Глобальная координата в системе координат WGS84 в формате lon, lat. */
-  coordinates(13),
-  /** Перекрёсток. */
-  crossroad(14),
-  /** Проход/проезд. */
-  gate(15),
-  /** Знак километра. */
-  kilometerRoadSign(16),
-  /** Парковка. */
-  parking(17),
-  /** Дорога. */
-  road(18),
-  /** Маршрут. */
-  route(19),
-  /** Остановки или станция общественного транспорта. */
-  station(20),
-  /** Вход на станцию. */
-  stationEntrance(21),
-  /** Станция метро. */
-  stationMetro(22),
-  /** Остановочная платформа. */
-  stationPlatform(23),
-  /** Улица. */
-  street(24),
-  /** На случай получения неожиданного типа. */
-  unknown(25),
-  ;
-
-  const ObjectType(this.rawValue);
-  final int rawValue;
-
-  static ObjectType getByValue(int value) {
-    return ObjectType.values.firstWhere((x) => x.rawValue == value);
-  }
-}
-
-
-final class _CObjectType extends ffi.Struct {
-  @ffi.Uint32()
-  external int rawValue;
-}
-
-extension _CObjectTypeBasicFunctions on _CObjectType {
-  void _releaseIntermediate() {
-  }
-}
-
-extension _CObjectTypeToDart on _CObjectType {
-  ObjectType _toDart() {
-    return ObjectType.getByValue(this.rawValue);
-  }
-}
-
-extension _DartTo_CObjectType on ObjectType {
-  _CObjectType _copyFromDartTo_CObjectType() {
-    return _CObjectTypeMakeDefault()..rawValue = this.rawValue;
   }
 }
 	
@@ -9190,6 +9256,13 @@ class DirectoryObject implements ffi.Finalizable {
     res._releaseIntermediate();
     return t;
   }
+  /** Связанные в объединённую карточку объекты. */
+  List<GroupItem> get group {
+    _CArray_CGroupItem res = _CDirectoryObject_group(_CDirectoryObjectMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
 
   static final _finalizer = ffi.NativeFinalizer(_CDirectoryObject_releasePtr);
 
@@ -9859,6 +9932,49 @@ extension _DartTo_COptional_COrgInfo on OrgInfo? {
     return cOptional;
   }
 }
+// MARK: - List<GroupItem> <-> _CArray_CGroupItem
+
+final class _CArray_CGroupItem extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> _impl;
+}
+
+extension _CArray_CGroupItemToDart on _CArray_CGroupItem {
+  List<GroupItem> _toDart() {
+    return _fillFromC();
+  }
+}
+
+extension _DartTo_CArray_CGroupItem on List<GroupItem> {
+  _CArray_CGroupItem _copyFromDartTo_CArray_CGroupItem() {
+    final cArray = _CArray_CGroupItemmakeEmpty();
+    forEach((item) {
+        final cItem = item._copyFromDartTo_CGroupItem();
+        _CArray_CGroupItemaddElement(cArray, cItem);
+        
+    });
+    return cArray;
+  }
+}
+
+extension _CArray_CGroupItemBasicFunctions on _CArray_CGroupItem {
+  void _releaseIntermediate() {
+    _CArray_CGroupItem_release(this);
+  }
+
+  static final _listToFill = <GroupItem>[];
+
+  static void _iterate(_CGroupItem item) {
+    _listToFill.add(item._toDart());
+  }
+
+  List<GroupItem> _fillFromC() {
+    _forEach_CArray_CGroupItem(this, ffi.Pointer.fromFunction<ffi.Void Function(_CGroupItem)>(_iterate));
+    final result = List<GroupItem>.from(_listToFill);
+    _listToFill.clear();
+    return result;
+  }
+}
+	
 // MARK: - Page
 
 /** Страница результатов поиска. */
@@ -13446,6 +13562,45 @@ class SearchManager implements ffi.Finalizable {
     return t;
   }
 
+  /**
+   Получить объект справочника по строковому идентификатору с указанной локалью.
+  
+   - Returns: future, резолвящаяся в указатель на объект справочника.
+   Если объект не найден, то вернется пустой указатель
+  */
+  CancelableOperation<DirectoryObject?> searchByIdWithLocale(
+    String id,
+    Locale? locale
+  )  {
+    var _a1 = id._copyFromDartTo_CString();
+    var _a2 = locale._copyFromDartTo_COptional_CLocale();
+    _CFuture_COptional_CDirectoryObject res = _CSearchManager_searchByIdWithLocale_CString_COptional_CLocale(_CSearchManagerMakeDefault().._impl=_self, _a1, _a2);
+    _a2._releaseIntermediate();
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
+   Получить объект справочника по идентификатору с указанной локалью.
+  
+   - Returns: future, резолвящаяся в указатель на объект справочника.
+   Если объект не найден, то вернется пустой указатель
+  */
+  CancelableOperation<DirectoryObject?> searchByDirectoryObjectIdWithLocale(
+    DgisObjectId objectId,
+    Locale? locale
+  )  {
+    var _a1 = objectId._copyFromDartTo_CDgisObjectId();
+    var _a2 = locale._copyFromDartTo_COptional_CLocale();
+    _CFuture_COptional_CDirectoryObject res = _CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocale(_CSearchManagerMakeDefault().._impl=_self, _a1, _a2);
+    _a2._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
 }
 
 // MARK: - SearchManager <-> CSearchManager
@@ -13853,6 +14008,124 @@ extension _DartTo_COptional_CDirectoryObject on DirectoryObject? {
     return cOptional;
   }
 }
+// MARK: - Locale
+
+/** Локаль. */
+class Locale {
+  /** Код языка, описанный в стандарте ISO 639-1, */
+  final String language;
+  /** Код страны, описанный в стандарте ISO 3166-1. */
+  final String region;
+
+  const Locale({
+    required this.language,
+    required this.region
+  });
+
+  // MARK: CLocale: Static Methods
+
+  /** Создать локаль по строковому представлению в виде LanguageTag или POSIX. */
+  static Locale? makeLocale(
+    String localeStr
+  )  {
+    var _a0 = localeStr._copyFromDartTo_CString();
+    _COptional_CLocale res = _CFunction_G_makeLocale_With_CString(_a0);
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  Locale copyWith({
+    String? language,
+    String? region
+  }) {
+    return Locale(
+      language: language ?? this.language,
+      region: region ?? this.region
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is Locale &&
+    other.runtimeType == runtimeType &&
+    other.language == language &&
+    other.region == region;
+
+  @override
+  int get hashCode {
+    return Object.hash(language, region);
+  }
+
+}
+final class _CLocale extends ffi.Struct {
+  external _CString language;
+
+  external _CString region;
+
+}
+// MARK: - Locale <-> _CLocale
+
+extension _CLocaleToDart on _CLocale {
+  Locale _toDart() {
+    return Locale(
+      language: this.language._toDart(),
+      region: this.region._toDart()
+    );
+  }
+}
+
+extension _DartTo_CLocale on Locale {
+  _CLocale _copyFromDartTo_CLocale() {
+    final res = _CLocaleMakeDefault();
+    res.language = this.language._copyFromDartTo_CString();
+    res.region = this.region._copyFromDartTo_CString();
+    return res;
+  }
+}
+extension _CLocaleRelease on _CLocale {
+  void _releaseIntermediate() {
+    language._releaseIntermediate();
+    region._releaseIntermediate();
+  }
+}
+
+// MARK: - Locale? <-> _COptional_CLocale
+
+final class _COptional_CLocale extends ffi.Struct {
+  
+  external _CLocale value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CLocaleBasicFunctions on _COptional_CLocale {
+  void _releaseIntermediate() {
+    _COptional_CLocale_release(this);
+  }
+}
+
+extension _COptional_CLocaleToDart on _COptional_CLocale {
+  Locale? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CLocale on Locale? {
+  _COptional_CLocale _copyFromDartTo_COptional_CLocale() {
+    final cOptional = _COptional_CLocaleMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CLocale();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
 // MARK: - SearchQueryBuilder
 
 /**
@@ -14106,6 +14379,18 @@ class SearchQueryBuilder implements ffi.Finalizable {
     return t;
   }
 
+  /** Задать локаль для поискового запроса. */
+  SearchQueryBuilder setLocale(
+    Locale? locale
+  )  {
+    var _a1 = locale._copyFromDartTo_COptional_CLocale();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setLocale_COptional_CLocale(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
   /** Сформировать поисковый запрос. */
   SearchQuery build()  {
     _CSearchQuery res = _CSearchQueryBuilder_build(_CSearchQueryBuilderMakeDefault().._impl=_self);
@@ -14352,6 +14637,18 @@ class SuggestQueryBuilder implements ffi.Finalizable {
     return t;
   }
 
+  /** Локаль, с которой производится запрос подсказки и отдаются результаты. */
+  SuggestQueryBuilder setLocale(
+    Locale? locale
+  )  {
+    var _a1 = locale._copyFromDartTo_COptional_CLocale();
+    _CSuggestQueryBuilder res = _CSuggestQueryBuilder_setLocale_COptional_CLocale(_CSuggestQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
   /** Сформировать запрос к подсказчику. */
   SuggestQuery build()  {
     _CSuggestQuery res = _CSuggestQueryBuilder_build(_CSuggestQueryBuilderMakeDefault().._impl=_self);
@@ -14501,6 +14798,13 @@ class SearchQueryWithInfo implements ffi.Finalizable {
   */
   String get subtitle {
     _CString res = _CSearchQueryWithInfo_subtitle(_CSearchQueryWithInfoMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+  /** Возвращает список рубрик, по которым производится запрос. */
+  List<RubricId> get rubrics {
+    _CArray_CRubricId res = _CSearchQueryWithInfo_rubrics(_CSearchQueryWithInfoMakeDefault().._impl=_self);
     final t = res._toDart();
     res._releaseIntermediate();
     return t;
@@ -15368,6 +15672,13 @@ class PackedSearchQuery implements ffi.Finalizable {
   SortingType get sortingType {
     _CSortingType res = _CPackedSearchQuery_sortingType(_CPackedSearchQueryMakeDefault().._impl=_self);
     return res._toDart();
+  }
+  /** Локаль поискового запроса. */
+  Locale? get locale {
+    _COptional_CLocale res = _CPackedSearchQuery_locale(_CPackedSearchQueryMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
   }
 
   static final _finalizer = ffi.NativeFinalizer(_CPackedSearchQuery_releasePtr);
@@ -38762,88 +39073,6 @@ extension _DartTo_COptional_CGestureManager on GestureManager? {
     return cOptional;
   }
 }
-// MARK: - Locale
-
-/** Локаль. */
-class Locale {
-  /** Код языка, описанный в стандарте ISO 639-1, */
-  final String language;
-  /** Код страны, описанный в стандарте ISO 3166-1. */
-  final String region;
-
-  const Locale({
-    required this.language,
-    required this.region
-  });
-
-  // MARK: CLocale: Static Methods
-
-  /** Создать локаль по строковому представлению в виде LanguageTag или POSIX. */
-  static Locale? makeLocale(
-    String localeStr
-  )  {
-    var _a0 = localeStr._copyFromDartTo_CString();
-    _COptional_CLocale res = _CFunction_G_makeLocale_With_CString(_a0);
-    _a0._releaseIntermediate();
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  Locale copyWith({
-    String? language,
-    String? region
-  }) {
-    return Locale(
-      language: language ?? this.language,
-      region: region ?? this.region
-    );
-  }
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is Locale &&
-    other.runtimeType == runtimeType &&
-    other.language == language &&
-    other.region == region;
-
-  @override
-  int get hashCode {
-    return Object.hash(language, region);
-  }
-
-}
-final class _CLocale extends ffi.Struct {
-  external _CString language;
-
-  external _CString region;
-
-}
-// MARK: - Locale <-> _CLocale
-
-extension _CLocaleToDart on _CLocale {
-  Locale _toDart() {
-    return Locale(
-      language: this.language._toDart(),
-      region: this.region._toDart()
-    );
-  }
-}
-
-extension _DartTo_CLocale on Locale {
-  _CLocale _copyFromDartTo_CLocale() {
-    final res = _CLocaleMakeDefault();
-    res.language = this.language._copyFromDartTo_CString();
-    res.region = this.region._copyFromDartTo_CString();
-    return res;
-  }
-}
-extension _CLocaleRelease on _CLocale {
-  void _releaseIntermediate() {
-    language._releaseIntermediate();
-    region._releaseIntermediate();
-  }
-}
-
 // MARK: - ApplicationState
 
 /** Состояние приложения, использующего SDK */
@@ -39667,42 +39896,6 @@ LocaleManager toLocaleManager(
   return t;
 }
 
-// MARK: - Locale? <-> _COptional_CLocale
-
-final class _COptional_CLocale extends ffi.Struct {
-  
-  external _CLocale value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CLocaleBasicFunctions on _COptional_CLocale {
-  void _releaseIntermediate() {
-    _COptional_CLocale_release(this);
-  }
-}
-
-extension _COptional_CLocaleToDart on _COptional_CLocale {
-  Locale? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CLocale on Locale? {
-  _COptional_CLocale _copyFromDartTo_COptional_CLocale() {
-    final cOptional = _COptional_CLocaleMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CLocale();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
 // MARK: - Locale
 
 extension LocaleToLocalePosix on Locale {
@@ -41520,6 +41713,13 @@ late final _CFormattedAddressMakeDefault = _CFormattedAddressMakeDefaultPtr.asFu
 late final _CFormattingTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFormattingType Function()>>('CFormattingTypeMakeDefault');
 late final _CFormattingTypeMakeDefault = _CFormattingTypeMakeDefaultPtr.asFunction<_CFormattingType Function()>();
 
+late final _CObjectTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CObjectType Function()>>('CObjectTypeMakeDefault');
+late final _CObjectTypeMakeDefault = _CObjectTypeMakeDefaultPtr.asFunction<_CObjectType Function()>();
+
+late final _CGroupItemMakeDefaultPtr = _lookup<ffi.NativeFunction<_CGroupItem Function()>>('CGroupItemMakeDefault');
+late final _CGroupItemMakeDefault = _CGroupItemMakeDefaultPtr.asFunction<_CGroupItem Function()>();
+
+
 late final _CAggregateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CAggregate Function()>>('CAggregateMakeDefault');
 late final _CAggregateMakeDefault = _CAggregateMakeDefaultPtr.asFunction<_CAggregate Function()>();
 
@@ -41600,9 +41800,6 @@ late final _forEach_CArray_CRubricId = _forEach_CArray_CRubricIdPtr.asFunction<
 >>)>();
 late final _CArray_CRubricId_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CRubricId)>>('CArray_CRubricId_release');
 late final _CArray_CRubricId_release = _CArray_CRubricId_releasePtr.asFunction<void Function(_CArray_CRubricId)>();
-
-late final _CObjectTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CObjectType Function()>>('CObjectTypeMakeDefault');
-late final _CObjectTypeMakeDefault = _CObjectTypeMakeDefaultPtr.asFunction<_CObjectType Function()>();
 
 late final _CArray_CArray_CWeekTimeIntervalmakeEmptyPtr = _lookup<ffi.NativeFunction<_CArray_CArray_CWeekTimeInterval Function()>>('CArray_CArray_CWeekTimeInterval_makeEmpty');
 late final _CArray_CArray_CWeekTimeIntervalmakeEmpty = _CArray_CArray_CWeekTimeIntervalmakeEmptyPtr.asFunction<_CArray_CArray_CWeekTimeInterval Function()>();
@@ -41817,6 +42014,8 @@ late final _CDirectoryObject_rubricIdsPtr = _lookup<ffi.NativeFunction<_CArray_C
 late final _CDirectoryObject_rubricIds = _CDirectoryObject_rubricIdsPtr.asFunction<_CArray_CRubricId Function(_CDirectoryObject)>();
 late final _CDirectoryObject_orgInfoPtr = _lookup<ffi.NativeFunction<_COptional_COrgInfo Function(_CDirectoryObject)>>('CDirectoryObject_orgInfo');
 late final _CDirectoryObject_orgInfo = _CDirectoryObject_orgInfoPtr.asFunction<_COptional_COrgInfo Function(_CDirectoryObject)>();
+late final _CDirectoryObject_groupPtr = _lookup<ffi.NativeFunction<_CArray_CGroupItem Function(_CDirectoryObject)>>('CDirectoryObject_group');
+late final _CDirectoryObject_group = _CDirectoryObject_groupPtr.asFunction<_CArray_CGroupItem Function(_CDirectoryObject)>();
 
 late final _CDirectoryObject_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CDirectoryObject_cg_objectIdentifier');
 late final _CDirectoryObject_cg_objectIdentifier = _CDirectoryObject_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -41943,6 +42142,19 @@ late final _COptional_COrgInfoMakeDefault = _COptional_COrgInfoMakeDefaultPtr.as
 
 late final _COptional_COrgInfo_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_COrgInfo)>>('COptional_COrgInfo_release');
 late final _COptional_COrgInfo_release = _COptional_COrgInfo_releasePtr.asFunction<void Function(_COptional_COrgInfo)>();
+
+late final _CArray_CGroupItemmakeEmptyPtr = _lookup<ffi.NativeFunction<_CArray_CGroupItem Function()>>('CArray_CGroupItem_makeEmpty');
+late final _CArray_CGroupItemmakeEmpty = _CArray_CGroupItemmakeEmptyPtr.asFunction<_CArray_CGroupItem Function()>();
+late final _CArray_CGroupItemaddElementPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CGroupItem, _CGroupItem)>>('CArray_CGroupItem_addElement');
+late final _CArray_CGroupItemaddElement = _CArray_CGroupItemaddElementPtr.asFunction<void Function(_CArray_CGroupItem, _CGroupItem)>();
+late final _forEach_CArray_CGroupItemPtr = _lookup<ffi.NativeFunction<
+  ffi.Void Function(_CArray_CGroupItem, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CGroupItem)>>)
+>>('CArray_CGroupItem_forEachWithFunctionPointer');
+late final _forEach_CArray_CGroupItem = _forEach_CArray_CGroupItemPtr.asFunction<
+  void Function(_CArray_CGroupItem, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CGroupItem)
+>>)>();
+late final _CArray_CGroupItem_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CGroupItem)>>('CArray_CGroupItem_release');
+late final _CArray_CGroupItem_release = _CArray_CGroupItem_releasePtr.asFunction<void Function(_CArray_CGroupItem)>();
 late final _CPage_itemsPtr = _lookup<ffi.NativeFunction<_CArray_CDirectoryObject Function(_CPage)>>('CPage_items');
 late final _CPage_items = _CPage_itemsPtr.asFunction<_CArray_CDirectoryObject Function(_CPage)>();
 
@@ -42599,6 +42811,10 @@ late final _CSearchManager_searchById_CStringPtr = _lookup<ffi.NativeFunction<_C
 late final _CSearchManager_searchById_CString = _CSearchManager_searchById_CStringPtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CString)>();
 late final _CSearchManager_searchByDirectoryObjectId_CDgisObjectIdPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CDgisObjectId)>>('CSearchManager_searchByDirectoryObjectId_CDgisObjectId');
 late final _CSearchManager_searchByDirectoryObjectId_CDgisObjectId = _CSearchManager_searchByDirectoryObjectId_CDgisObjectIdPtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CDgisObjectId)>();
+late final _CSearchManager_searchByIdWithLocale_CString_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CString, _COptional_CLocale)>>('CSearchManager_searchByIdWithLocale_CString_COptional_CLocale');
+late final _CSearchManager_searchByIdWithLocale_CString_COptional_CLocale = _CSearchManager_searchByIdWithLocale_CString_COptional_CLocalePtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CString, _COptional_CLocale)>();
+late final _CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CDgisObjectId, _COptional_CLocale)>>('CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocale');
+late final _CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocale = _CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocalePtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CDgisObjectId, _COptional_CLocale)>();
 
 late final _CSearchManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchManager_release');
 late final _CSearchManager_release = _CSearchManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
@@ -42685,6 +42901,18 @@ late final _COptional_CDirectoryObjectMakeDefault = _COptional_CDirectoryObjectM
 
 late final _COptional_CDirectoryObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CDirectoryObject)>>('COptional_CDirectoryObject_release');
 late final _COptional_CDirectoryObject_release = _COptional_CDirectoryObject_releasePtr.asFunction<void Function(_COptional_CDirectoryObject)>();
+late final _CFunction_G_makeLocale_With_CStringPtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function(_CString)>>('CFunction_G_makeLocale_With_CString');
+late final _CFunction_G_makeLocale_With_CString = _CFunction_G_makeLocale_With_CStringPtr.asFunction<_COptional_CLocale Function(_CString)>();
+
+late final _CLocaleMakeDefaultPtr = _lookup<ffi.NativeFunction<_CLocale Function()>>('CLocaleMakeDefault');
+late final _CLocaleMakeDefault = _CLocaleMakeDefaultPtr.asFunction<_CLocale Function()>();
+
+
+late final _COptional_CLocaleMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function()>>('COptional_CLocaleMakeDefault');
+late final _COptional_CLocaleMakeDefault = _COptional_CLocaleMakeDefaultPtr.asFunction<_COptional_CLocale Function()>();
+
+late final _COptional_CLocale_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CLocale)>>('COptional_CLocale_release');
+late final _COptional_CLocale_release = _COptional_CLocale_releasePtr.asFunction<void Function(_COptional_CLocale)>();
 
 late final _CSearchQueryBuilder_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryBuilder_cg_objectIdentifier');
 late final _CSearchQueryBuilder_cg_objectIdentifier = _CSearchQueryBuilder_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -42719,6 +42947,8 @@ late final _CSearchQueryBuilder_setGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFun
 late final _CSearchQueryBuilder_setGeoPoint_CGeoPoint = _CSearchQueryBuilder_setGeoPoint_CGeoPointPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CGeoPoint)>();
 late final _CSearchQueryBuilder_setRadius_CMeterPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CMeter)>>('CSearchQueryBuilder_setRadius_CMeter');
 late final _CSearchQueryBuilder_setRadius_CMeter = _CSearchQueryBuilder_setRadius_CMeterPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CMeter)>();
+late final _CSearchQueryBuilder_setLocale_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CLocale)>>('CSearchQueryBuilder_setLocale_COptional_CLocale');
+late final _CSearchQueryBuilder_setLocale_COptional_CLocale = _CSearchQueryBuilder_setLocale_COptional_CLocalePtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CLocale)>();
 late final _CSearchQueryBuilder_buildPtr = _lookup<ffi.NativeFunction<_CSearchQuery Function(_CSearchQueryBuilder)>>('CSearchQueryBuilder_build');
 late final _CSearchQueryBuilder_build = _CSearchQueryBuilder_buildPtr.asFunction<_CSearchQuery Function(_CSearchQueryBuilder)>();
 
@@ -42756,6 +42986,8 @@ late final _CSuggestQueryBuilder_setSuggestorType_CSuggestorTypePtr = _lookup<ff
 late final _CSuggestQueryBuilder_setSuggestorType_CSuggestorType = _CSuggestQueryBuilder_setSuggestorType_CSuggestorTypePtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _CSuggestorType)>();
 late final _CSuggestQueryBuilder_setLimit_int32_tPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, ffi.Int32)>>('CSuggestQueryBuilder_setLimit_int32_t');
 late final _CSuggestQueryBuilder_setLimit_int32_t = _CSuggestQueryBuilder_setLimit_int32_tPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, int)>();
+late final _CSuggestQueryBuilder_setLocale_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CLocale)>>('CSuggestQueryBuilder_setLocale_COptional_CLocale');
+late final _CSuggestQueryBuilder_setLocale_COptional_CLocale = _CSuggestQueryBuilder_setLocale_COptional_CLocalePtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CLocale)>();
 late final _CSuggestQueryBuilder_buildPtr = _lookup<ffi.NativeFunction<_CSuggestQuery Function(_CSuggestQueryBuilder)>>('CSuggestQueryBuilder_build');
 late final _CSuggestQueryBuilder_build = _CSuggestQueryBuilder_buildPtr.asFunction<_CSuggestQuery Function(_CSuggestQueryBuilder)>();
 
@@ -42788,6 +43020,8 @@ late final _CSearchQueryWithInfo_titlePtr = _lookup<ffi.NativeFunction<_CString 
 late final _CSearchQueryWithInfo_title = _CSearchQueryWithInfo_titlePtr.asFunction<_CString Function(_CSearchQueryWithInfo)>();
 late final _CSearchQueryWithInfo_subtitlePtr = _lookup<ffi.NativeFunction<_CString Function(_CSearchQueryWithInfo)>>('CSearchQueryWithInfo_subtitle');
 late final _CSearchQueryWithInfo_subtitle = _CSearchQueryWithInfo_subtitlePtr.asFunction<_CString Function(_CSearchQueryWithInfo)>();
+late final _CSearchQueryWithInfo_rubricsPtr = _lookup<ffi.NativeFunction<_CArray_CRubricId Function(_CSearchQueryWithInfo)>>('CSearchQueryWithInfo_rubrics');
+late final _CSearchQueryWithInfo_rubrics = _CSearchQueryWithInfo_rubricsPtr.asFunction<_CArray_CRubricId Function(_CSearchQueryWithInfo)>();
 
 late final _CSearchQueryWithInfo_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryWithInfo_cg_objectIdentifier');
 late final _CSearchQueryWithInfo_cg_objectIdentifier = _CSearchQueryWithInfo_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -42932,6 +43166,8 @@ late final _CPackedSearchQuery_directoryFilterPtr = _lookup<ffi.NativeFunction<_
 late final _CPackedSearchQuery_directoryFilter = _CPackedSearchQuery_directoryFilterPtr.asFunction<_CDirectoryFilter Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_sortingTypePtr = _lookup<ffi.NativeFunction<_CSortingType Function(_CPackedSearchQuery)>>('CPackedSearchQuery_sortingType');
 late final _CPackedSearchQuery_sortingType = _CPackedSearchQuery_sortingTypePtr.asFunction<_CSortingType Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_localePtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function(_CPackedSearchQuery)>>('CPackedSearchQuery_locale');
+late final _CPackedSearchQuery_locale = _CPackedSearchQuery_localePtr.asFunction<_COptional_CLocale Function(_CPackedSearchQuery)>();
 
 late final _CPackedSearchQuery_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CPackedSearchQuery_cg_objectIdentifier');
 late final _CPackedSearchQuery_cg_objectIdentifier = _CPackedSearchQuery_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -46685,12 +46921,6 @@ late final _COptional_CGestureManagerMakeDefault = _COptional_CGestureManagerMak
 
 late final _COptional_CGestureManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CGestureManager)>>('COptional_CGestureManager_release');
 late final _COptional_CGestureManager_release = _COptional_CGestureManager_releasePtr.asFunction<void Function(_COptional_CGestureManager)>();
-late final _CFunction_G_makeLocale_With_CStringPtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function(_CString)>>('CFunction_G_makeLocale_With_CString');
-late final _CFunction_G_makeLocale_With_CString = _CFunction_G_makeLocale_With_CStringPtr.asFunction<_COptional_CLocale Function(_CString)>();
-
-late final _CLocaleMakeDefaultPtr = _lookup<ffi.NativeFunction<_CLocale Function()>>('CLocaleMakeDefault');
-late final _CLocaleMakeDefault = _CLocaleMakeDefaultPtr.asFunction<_CLocale Function()>();
-
 
 late final _CApplicationStateMakeDefaultPtr = _lookup<ffi.NativeFunction<_CApplicationState Function()>>('CApplicationStateMakeDefault');
 late final _CApplicationStateMakeDefault = _CApplicationStateMakeDefaultPtr.asFunction<_CApplicationState Function()>();
@@ -46825,12 +47055,6 @@ late final _CFunction_G_getLocaleManager_With_CContextPtr = _lookup<ffi.NativeFu
 late final _CFunction_G_getLocaleManager_With_CContext = _CFunction_G_getLocaleManager_With_CContextPtr.asFunction<_CLocaleManager Function(_CContext)>();
 late final _CFunction_G_toLocaleManager_With_CPlatformLocaleManagerPtr = _lookup<ffi.NativeFunction<_CLocaleManager Function(_CPlatformLocaleManager)>>('CFunction_G_toLocaleManager_With_CPlatformLocaleManager');
 late final _CFunction_G_toLocaleManager_With_CPlatformLocaleManager = _CFunction_G_toLocaleManager_With_CPlatformLocaleManagerPtr.asFunction<_CLocaleManager Function(_CPlatformLocaleManager)>();
-
-late final _COptional_CLocaleMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function()>>('COptional_CLocaleMakeDefault');
-late final _COptional_CLocaleMakeDefault = _COptional_CLocaleMakeDefaultPtr.asFunction<_COptional_CLocale Function()>();
-
-late final _COptional_CLocale_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CLocale)>>('COptional_CLocale_release');
-late final _COptional_CLocale_release = _COptional_CLocale_releasePtr.asFunction<void Function(_COptional_CLocale)>();
 late final _CFunction_G_toLocalePosix_With_CLocalePtr = _lookup<ffi.NativeFunction<_CString Function(_CLocale)>>('CFunction_G_toLocalePosix_With_CLocale');
 late final _CFunction_G_toLocalePosix_With_CLocale = _CFunction_G_toLocalePosix_With_CLocalePtr.asFunction<_CString Function(_CLocale)>();
 
