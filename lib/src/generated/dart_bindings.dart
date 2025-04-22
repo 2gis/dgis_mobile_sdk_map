@@ -4051,6 +4051,25 @@ class File implements ffi.Finalizable {
     return t;
   }
 
+  /**
+   Файл из asset-ов.
+  
+   - Parameter path: Путь относительно корневой директории asset-ов.
+  */
+  static File fromAsset(
+    Context context,
+    String path
+  )  {
+    var _a0 = context._copyFromDartTo_CContext();
+    var _a1 = path._copyFromDartTo_CString();
+    _CFile res = _CFile_S_fromAsset_CContext_CString(_a0, _a1);
+    _a1._releaseIntermediate();
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
 }
 
 // MARK: - File <-> CFile
@@ -15637,6 +15656,30 @@ class PackedSearchQuery implements ffi.Finalizable {
     res._releaseIntermediate();
     return t;
   }
+  /** Идентификатор организации. */
+  OrgId? get orgId {
+    _COptional_COrgId res = _CPackedSearchQuery_orgId(_CPackedSearchQueryMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  /** Идентификаторы рубрик. */
+  List<RubricId> get rubricIds {
+    _CArray_CRubricId res = _CPackedSearchQuery_rubricIds(_CPackedSearchQueryMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+  /** Идентификаторы объектов. */
+  List<DgisObjectId> get objectIds {
+    _CArray_CDgisObjectId res = _CPackedSearchQuery_objectIds(_CPackedSearchQueryMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+  /** Идентификатор здания. */
+  BuildingId? get buildingId {
+    _COptional_CBuildingId res = _CPackedSearchQuery_buildingId(_CPackedSearchQueryMakeDefault().._impl=_self);
+    return res._toDart();
+  }
   /** Геометрия, ограничивающая область поиска. */
   List<GeoPoint>? get spatialRestriction {
     _COptional_CArray_CGeoPoint res = _CPackedSearchQuery_spatialRestriction(_CPackedSearchQueryMakeDefault().._impl=_self);
@@ -15671,6 +15714,16 @@ class PackedSearchQuery implements ffi.Finalizable {
   /** Тип сортировки результатов. */
   SortingType get sortingType {
     _CSortingType res = _CPackedSearchQuery_sortingType(_CPackedSearchQueryMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  /** Центр для поискового запроса. */
+  GeoPoint? get geoPoint {
+    _COptional_CGeoPoint res = _CPackedSearchQuery_geoPoint(_CPackedSearchQueryMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  /** Радиус поиска в метрах. */
+  Meter? get radius {
+    _COptional_CMeter res = _CPackedSearchQuery_radius(_CPackedSearchQueryMakeDefault().._impl=_self);
     return res._toDart();
   }
   /** Локаль поискового запроса. */
@@ -15856,6 +15909,114 @@ extension _DartTo_CData on ByteData {
   }
 }
 	
+// MARK: - OrgId? <-> _COptional_COrgId
+
+final class _COptional_COrgId extends ffi.Struct {
+  
+  external _COrgId value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_COrgIdBasicFunctions on _COptional_COrgId {
+  void _releaseIntermediate() {
+    
+  }
+}
+
+extension _COptional_COrgIdToDart on _COptional_COrgId {
+  OrgId? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_COrgId on OrgId? {
+  _COptional_COrgId _copyFromDartTo_COptional_COrgId() {
+    final cOptional = _COptional_COrgIdMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_COrgId();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
+// MARK: - GeoPoint? <-> _COptional_CGeoPoint
+
+final class _COptional_CGeoPoint extends ffi.Struct {
+  
+  external _CGeoPoint value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CGeoPointBasicFunctions on _COptional_CGeoPoint {
+  void _releaseIntermediate() {
+    
+  }
+}
+
+extension _COptional_CGeoPointToDart on _COptional_CGeoPoint {
+  GeoPoint? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CGeoPoint on GeoPoint? {
+  _COptional_CGeoPoint _copyFromDartTo_COptional_CGeoPoint() {
+    final cOptional = _COptional_CGeoPointMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CGeoPoint();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
+// MARK: - Meter? <-> _COptional_CMeter
+
+final class _COptional_CMeter extends ffi.Struct {
+  
+  external _CMeter value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CMeterBasicFunctions on _COptional_CMeter {
+  void _releaseIntermediate() {
+    
+  }
+}
+
+extension _COptional_CMeterToDart on _COptional_CMeter {
+  Meter? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CMeter on Meter? {
+  _COptional_CMeter _copyFromDartTo_COptional_CMeter() {
+    final cOptional = _COptional_CMeterMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CMeter();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
 // MARK: - PointGeometryData
 
 /** Данные геометрии точечного объекта. */
@@ -18305,42 +18466,6 @@ extension _DartTo_COptional_CNewValuesNotifier on NewValuesNotifier? {
     final cOptional = _COptional_CNewValuesNotifierMakeDefault();
     if (this != null) {
       cOptional.value = this!._copyFromDartTo_CNewValuesNotifier();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
-// MARK: - GeoPoint? <-> _COptional_CGeoPoint
-
-final class _COptional_CGeoPoint extends ffi.Struct {
-  
-  external _CGeoPoint value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CGeoPointBasicFunctions on _COptional_CGeoPoint {
-  void _releaseIntermediate() {
-    
-  }
-}
-
-extension _COptional_CGeoPointToDart on _COptional_CGeoPoint {
-  GeoPoint? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CGeoPoint on GeoPoint? {
-  _COptional_CGeoPoint _copyFromDartTo_COptional_CGeoPoint() {
-    final cOptional = _COptional_CGeoPointMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CGeoPoint();
       cOptional.hasValue = true;
     } else {
       cOptional.hasValue = false;
@@ -26740,6 +26865,8 @@ class TextStyle {
   final TextPlacement textPlacement;
   final LogicalPixel textOffset;
   final String? fontName;
+  /** Скрывать ли текст при наложении с другими объектами (маркеры, подписи других объектов). */
+  final bool suppressOnOverlap;
 
   const TextStyle({
     this.fontSize = const LogicalPixel(8),
@@ -26749,7 +26876,8 @@ class TextStyle {
     this.textHorizontalAlignment = TextHorizontalAlignment.auto,
     this.textPlacement = TextPlacement.bottomCenter,
     this.textOffset = const LogicalPixel(0),
-    this.fontName = null
+    this.fontName = null,
+    this.suppressOnOverlap = true
   });
 
   TextStyle copyWith({
@@ -26760,7 +26888,8 @@ class TextStyle {
     TextHorizontalAlignment? textHorizontalAlignment,
     TextPlacement? textPlacement,
     LogicalPixel? textOffset,
-    Optional<String?>? fontName
+    Optional<String?>? fontName,
+    bool? suppressOnOverlap
   }) {
     return TextStyle(
       fontSize: fontSize ?? this.fontSize,
@@ -26770,7 +26899,8 @@ class TextStyle {
       textHorizontalAlignment: textHorizontalAlignment ?? this.textHorizontalAlignment,
       textPlacement: textPlacement ?? this.textPlacement,
       textOffset: textOffset ?? this.textOffset,
-      fontName: fontName != null ? fontName.value : this.fontName
+      fontName: fontName != null ? fontName.value : this.fontName,
+      suppressOnOverlap: suppressOnOverlap ?? this.suppressOnOverlap
     );
   }
   @override
@@ -26784,11 +26914,12 @@ class TextStyle {
     other.textHorizontalAlignment == textHorizontalAlignment &&
     other.textPlacement == textPlacement &&
     other.textOffset == textOffset &&
-    other.fontName == fontName;
+    other.fontName == fontName &&
+    other.suppressOnOverlap == suppressOnOverlap;
 
   @override
   int get hashCode {
-    return Object.hash(fontSize, color, strokeWidth, strokeColor, textHorizontalAlignment, textPlacement, textOffset, fontName);
+    return Object.hash(fontSize, color, strokeWidth, strokeColor, textHorizontalAlignment, textPlacement, textOffset, fontName, suppressOnOverlap);
   }
 
 }
@@ -26809,6 +26940,9 @@ final class _CTextStyle extends ffi.Struct {
 
   external _COptional_CString fontName;
 
+  @ffi.Bool()
+  external bool suppressOnOverlap;
+
 }
 // MARK: - TextStyle <-> _CTextStyle
 
@@ -26822,7 +26956,8 @@ extension _CTextStyleToDart on _CTextStyle {
       textHorizontalAlignment: this.textHorizontalAlignment._toDart(),
       textPlacement: this.textPlacement._toDart(),
       textOffset: this.textOffset._toDart(),
-      fontName: this.fontName._toDart()
+      fontName: this.fontName._toDart(),
+      suppressOnOverlap: this.suppressOnOverlap
     );
   }
 }
@@ -26838,6 +26973,7 @@ extension _DartTo_CTextStyle on TextStyle {
     res.textPlacement = this.textPlacement._copyFromDartTo_CTextPlacement();
     res.textOffset = this.textOffset._copyFromDartTo_CLogicalPixel();
     res.fontName = this.fontName._copyFromDartTo_COptional_CString();
+    res.suppressOnOverlap = this.suppressOnOverlap;
     return res;
   }
 }
@@ -30461,42 +30597,6 @@ extension _CProjectionToDart on _CProjection {
 extension _DartToCProjection on Projection {
   _CProjection _copyFromDartTo_CProjection() {
     return (_CProjectionMakeDefault().._impl=_self)._retain();
-  }
-}
-// MARK: - Meter? <-> _COptional_CMeter
-
-final class _COptional_CMeter extends ffi.Struct {
-  
-  external _CMeter value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CMeterBasicFunctions on _COptional_CMeter {
-  void _releaseIntermediate() {
-    
-  }
-}
-
-extension _COptional_CMeterToDart on _COptional_CMeter {
-  Meter? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CMeter on Meter? {
-  _COptional_CMeter _copyFromDartTo_COptional_CMeter() {
-    final cOptional = _COptional_CMeterMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CMeter();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
   }
 }
 // MARK: - LogicalPixel? <-> _COptional_CLogicalPixel
@@ -41511,6 +41611,8 @@ late final _CFile_cg_objectIdentifier = _CFile_cg_objectIdentifierPtr.asFunction
 
 late final _CFile_S_fromString_CStringPtr = _lookup<ffi.NativeFunction<_CFile Function(_CString)>>('CFile_S_fromString_CString');
 late final _CFile_S_fromString_CString = _CFile_S_fromString_CStringPtr.asFunction<_CFile Function(_CString)>();
+late final _CFile_S_fromAsset_CContext_CStringPtr = _lookup<ffi.NativeFunction<_CFile Function(_CContext, _CString)>>('CFile_S_fromAsset_CContext_CString');
+late final _CFile_S_fromAsset_CContext_CString = _CFile_S_fromAsset_CContext_CStringPtr.asFunction<_CFile Function(_CContext, _CString)>();
 late final _CFile_C_createWith_CStringPtr = _lookup<ffi.NativeFunction<_CFile Function(_CString)>>('CFile_C_createWith_CString');
 late final _CFile_C_createWith_CString = _CFile_C_createWith_CStringPtr.asFunction<_CFile Function(_CString)>();
 
@@ -43154,6 +43256,14 @@ late final _CChannel_CChangeTypeConnect = _CChannel_CChangeTypeConnectPtr.asFunc
 >();
 late final _CPackedSearchQuery_queryTextPtr = _lookup<ffi.NativeFunction<_CString Function(_CPackedSearchQuery)>>('CPackedSearchQuery_queryText');
 late final _CPackedSearchQuery_queryText = _CPackedSearchQuery_queryTextPtr.asFunction<_CString Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_orgIdPtr = _lookup<ffi.NativeFunction<_COptional_COrgId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_orgId');
+late final _CPackedSearchQuery_orgId = _CPackedSearchQuery_orgIdPtr.asFunction<_COptional_COrgId Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_rubricIdsPtr = _lookup<ffi.NativeFunction<_CArray_CRubricId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_rubricIds');
+late final _CPackedSearchQuery_rubricIds = _CPackedSearchQuery_rubricIdsPtr.asFunction<_CArray_CRubricId Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_objectIdsPtr = _lookup<ffi.NativeFunction<_CArray_CDgisObjectId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_objectIds');
+late final _CPackedSearchQuery_objectIds = _CPackedSearchQuery_objectIdsPtr.asFunction<_CArray_CDgisObjectId Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_buildingIdPtr = _lookup<ffi.NativeFunction<_COptional_CBuildingId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_buildingId');
+late final _CPackedSearchQuery_buildingId = _CPackedSearchQuery_buildingIdPtr.asFunction<_COptional_CBuildingId Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_spatialRestrictionPtr = _lookup<ffi.NativeFunction<_COptional_CArray_CGeoPoint Function(_CPackedSearchQuery)>>('CPackedSearchQuery_spatialRestriction');
 late final _CPackedSearchQuery_spatialRestriction = _CPackedSearchQuery_spatialRestrictionPtr.asFunction<_COptional_CArray_CGeoPoint Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_areaOfInterestPtr = _lookup<ffi.NativeFunction<_COptional_CGeoRect Function(_CPackedSearchQuery)>>('CPackedSearchQuery_areaOfInterest');
@@ -43166,6 +43276,10 @@ late final _CPackedSearchQuery_directoryFilterPtr = _lookup<ffi.NativeFunction<_
 late final _CPackedSearchQuery_directoryFilter = _CPackedSearchQuery_directoryFilterPtr.asFunction<_CDirectoryFilter Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_sortingTypePtr = _lookup<ffi.NativeFunction<_CSortingType Function(_CPackedSearchQuery)>>('CPackedSearchQuery_sortingType');
 late final _CPackedSearchQuery_sortingType = _CPackedSearchQuery_sortingTypePtr.asFunction<_CSortingType Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_geoPointPtr = _lookup<ffi.NativeFunction<_COptional_CGeoPoint Function(_CPackedSearchQuery)>>('CPackedSearchQuery_geoPoint');
+late final _CPackedSearchQuery_geoPoint = _CPackedSearchQuery_geoPointPtr.asFunction<_COptional_CGeoPoint Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_radiusPtr = _lookup<ffi.NativeFunction<_COptional_CMeter Function(_CPackedSearchQuery)>>('CPackedSearchQuery_radius');
+late final _CPackedSearchQuery_radius = _CPackedSearchQuery_radiusPtr.asFunction<_COptional_CMeter Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_localePtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function(_CPackedSearchQuery)>>('CPackedSearchQuery_locale');
 late final _CPackedSearchQuery_locale = _CPackedSearchQuery_localePtr.asFunction<_COptional_CLocale Function(_CPackedSearchQuery)>();
 
@@ -43200,6 +43314,15 @@ late final _GetDataWith_CDataPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Ui
 late final _GetDataWith_CData = _GetDataWith_CDataPtr.asFunction<ffi.Pointer<ffi.Uint8> Function(_CData)>();
 late final _CData_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CData)>>('CData_release');
 late final _CData_release = _CData_releasePtr.asFunction<void Function(_CData)>();
+
+late final _COptional_COrgIdMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_COrgId Function()>>('COptional_COrgIdMakeDefault');
+late final _COptional_COrgIdMakeDefault = _COptional_COrgIdMakeDefaultPtr.asFunction<_COptional_COrgId Function()>();
+
+late final _COptional_CGeoPointMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CGeoPoint Function()>>('COptional_CGeoPointMakeDefault');
+late final _COptional_CGeoPointMakeDefault = _COptional_CGeoPointMakeDefaultPtr.asFunction<_COptional_CGeoPoint Function()>();
+
+late final _COptional_CMeterMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CMeter Function()>>('COptional_CMeterMakeDefault');
+late final _COptional_CMeterMakeDefault = _COptional_CMeterMakeDefaultPtr.asFunction<_COptional_CMeter Function()>();
 
 late final _CPointGeometryData_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPointGeometryData)>>('CPointGeometryData_release');
 late final _CPointGeometryData_release = _CPointGeometryData_releasePtr.asFunction<void Function(_CPointGeometryData)>();
@@ -43478,9 +43601,6 @@ late final _COptional_CNewValuesNotifierMakeDefault = _COptional_CNewValuesNotif
 
 late final _COptional_CNewValuesNotifier_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CNewValuesNotifier)>>('COptional_CNewValuesNotifier_release');
 late final _COptional_CNewValuesNotifier_release = _COptional_CNewValuesNotifier_releasePtr.asFunction<void Function(_COptional_CNewValuesNotifier)>();
-
-late final _COptional_CGeoPointMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CGeoPoint Function()>>('COptional_CGeoPointMakeDefault');
-late final _COptional_CGeoPointMakeDefault = _COptional_CGeoPointMakeDefaultPtr.asFunction<_COptional_CGeoPoint Function()>();
 
 late final _COptional_CTiltMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CTilt Function()>>('COptional_CTiltMakeDefault');
 late final _COptional_CTiltMakeDefault = _COptional_CTiltMakeDefaultPtr.asFunction<_COptional_CTilt Function()>();
@@ -45462,9 +45582,6 @@ late final _CProjection_retain = _CProjection_retainPtr.asFunction<_CProjection 
 late final _CProjectionMakeDefaultPtr = _lookup<ffi.NativeFunction<_CProjection Function()>>('CProjectionMakeDefault');
 late final _CProjectionMakeDefault = _CProjectionMakeDefaultPtr.asFunction<_CProjection Function()>();
 
-
-late final _COptional_CMeterMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CMeter Function()>>('COptional_CMeterMakeDefault');
-late final _COptional_CMeterMakeDefault = _COptional_CMeterMakeDefaultPtr.asFunction<_COptional_CMeter Function()>();
 
 late final _COptional_CLogicalPixelMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CLogicalPixel Function()>>('COptional_CLogicalPixelMakeDefault');
 late final _COptional_CLogicalPixelMakeDefault = _COptional_CLogicalPixelMakeDefaultPtr.asFunction<_COptional_CLogicalPixel Function()>();

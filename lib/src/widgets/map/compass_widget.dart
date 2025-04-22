@@ -61,7 +61,7 @@ class _CompassWidgetState extends ThemedMapControllingWidgetState<CompassWidget,
       stream: bearingSubscription,
       builder: (context, snapshot) {
         final bearing = snapshot.data?.value ?? 0.0;
-        final angle = pi * bearing / 180;
+        final angle = -(pi * bearing / 180);
         return AnimatedOpacity(
           opacity: bearing == 0 ? 0.0 : 1.0,
           duration: const Duration(milliseconds: 200),

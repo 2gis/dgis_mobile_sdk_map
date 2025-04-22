@@ -5,6 +5,7 @@ import 'pages/calc_position.dart';
 import 'pages/camera_moves.dart';
 import 'pages/clustering.dart';
 import 'pages/copyright.dart';
+import 'pages/custom_style_load.dart';
 import 'pages/fps_page.dart';
 import 'pages/indoor_widget.dart';
 import 'pages/map_gestures.dart';
@@ -142,6 +143,17 @@ class _MyHomePageState extends State<MyHomePage> {
               context,
               MaterialPageRoute(
                   builder: (context) => CopyrightPage(title: 'Copyright')),
+            );
+          },
+        ),
+        ListTile(
+          title: buildPageTitle('Custom style loading'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) =>
+                      CustomStyleLoadPage(title: 'Custom style loading')),
             );
           },
         ),

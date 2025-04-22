@@ -1,14 +1,13 @@
 import 'dart:async';
-import 'dart:isolate';
 
 import 'package:async/async.dart';
 import 'package:dgis_mobile_sdk_map/dgis.dart' as sdk;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import 'common.dart';
-import 'fps_graph_painter.dart';
+import '../fps_graph_painter.dart';
 import 'camera_paths.dart';
+import 'common.dart';
 
 class BenchmarkPage extends StatefulWidget {
   const BenchmarkPage({required this.title, super.key});
@@ -22,68 +21,38 @@ class BenchmarkPage extends StatefulWidget {
 class _BenchmarkPageState extends State<BenchmarkPage> {
   final sdkContext = AppContainer().initializeSdk();
   final mapWidgetController = sdk.MapWidgetController();
+  final List<double> fpsValues = [];
+
   sdk.Map? sdkMap;
   CancelableOperation<sdk.CameraAnimatedMoveResult>? moveCameraCancellable;
   StreamSubscription<sdk.Location?>? locationSubscription;
-
-  final List<double> fpsValues = [];
   double lastFps = 0;
-  final ReceivePort receivePort = ReceivePort();
-  Isolate? fpsIsolate;
+  StreamSubscription<sdk.Fps>? _fpsSubscription;
+
+  //TODO: Сделать получение максимального фпс для девайса
+  double maxFps = 120;
 
   @override
   void initState() {
     super.initState();
     initContext();
-    _startFpsTracking();
   }
 
   @override
   void dispose() {
+    _fpsSubscription?.cancel();
     locationSubscription?.cancel();
-    fpsIsolate?.kill(priority: Isolate.immediate);
-    receivePort.close();
     super.dispose();
   }
 
   Future<void> _startFpsTracking() async {
+    await _fpsSubscription?.cancel();
     fpsValues.clear();
-
-    fpsIsolate = await Isolate.spawn(_fpsTrackingIsolate, receivePort.sendPort);
-
-    mapWidgetController.fpsChannel.listen((fps) {
-      receivePort.sendPort.send(fps.value.toDouble());
-    });
-
-    receivePort.listen((message) {
+    _fpsSubscription = mapWidgetController.fpsChannel.listen((fps) {
       setState(() {
-        lastFps = message as double;
+        lastFps = fps.value.toDouble();
         fpsValues.add(lastFps);
-
-        if (fpsValues.length > 100) {
-          fpsValues.removeAt(0);
-        }
       });
-    });
-  }
-
-  static void _fpsTrackingIsolate(SendPort sendPort) {
-    final localFpsValues = <double>[];
-
-    final receivePort = ReceivePort();
-    sendPort.send(receivePort.sendPort);
-
-    receivePort.listen((message) {
-      final fps = message as double;
-      localFpsValues.add(fps);
-
-      if (localFpsValues.length > 100) {
-        localFpsValues.removeAt(0);
-      }
-
-      final averageFps =
-          localFpsValues.reduce((a, b) => a + b) / localFpsValues.length;
-      sendPort.send(averageFps);
     });
   }
 
@@ -116,6 +85,7 @@ class _BenchmarkPageState extends State<BenchmarkPage> {
               averageFps: _averageFps,
               onePercentLow: _calculatePercentile(0.01),
               zeroPointOnePercentLow: _calculatePercentile(0.001),
+              maxFps: maxFps,
             ),
           ),
         ],
@@ -159,12 +129,12 @@ class _BenchmarkPageState extends State<BenchmarkPage> {
   }
 
   void _testCamera(CameraPathType pathType) {
-    _startFpsTracking();
     locationSubscription?.cancel();
     locationSubscription = null;
     if (sdkMap == null) {
       return;
     }
+    _startFpsTracking();
 
     final selectedPath = cameraPaths[pathType];
     if (selectedPath != null) {
@@ -188,15 +158,27 @@ class _BenchmarkPageState extends State<BenchmarkPage> {
     });
   }
 
+  List<double> filterLeadingZeros(List<double> fpsValues) {
+    final firstNonZeroIndex = fpsValues.indexWhere((fps) => fps > 0);
+    if (firstNonZeroIndex != -1) {
+      return fpsValues.sublist(firstNonZeroIndex);
+    } else {
+      return [];
+    }
+  }
+
   double get _averageFps {
-    if (fpsValues.isEmpty) return 0;
-    return fpsValues.reduce((a, b) => a + b) / fpsValues.length;
+    final filteredFpsValues = filterLeadingZeros(fpsValues);
+    if (filteredFpsValues.isEmpty) return 0;
+    return filteredFpsValues.reduce((a, b) => a + b) / filteredFpsValues.length;
   }
 
   double _calculatePercentile(double percentile) {
-    if (fpsValues.isEmpty) return 0;
-    final sortedValues = List<double>.from(fpsValues)..sort();
-    final index = (percentile * sortedValues.length).ceil() - 1;
+    final filteredFpsValues = filterLeadingZeros(fpsValues);
+    if (filteredFpsValues.isEmpty) return 0;
+    final sortedValues = List<double>.from(filteredFpsValues)..sort();
+    final index = ((percentile * sortedValues.length).ceil() - 1)
+        .clamp(0, sortedValues.length - 1);
     return sortedValues[index];
   }
 }

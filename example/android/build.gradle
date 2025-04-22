@@ -1,11 +1,11 @@
 allprojects {
     repositories {
+        mavenCentral()
         maven {
             url 'https://artifactory.2gis.dev/sdk-maven-release'
         }
         mavenLocal()
         google()
-        mavenCentral()
     }
 }
 
