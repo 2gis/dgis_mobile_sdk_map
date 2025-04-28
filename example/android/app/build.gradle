@@ -64,5 +64,5 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
 }
 
 dependencies {
-    compileOnly("ru.dgis.sdk.flutter_plugin:map:12.6.1")
+    compileOnly("ru.dgis.sdk.flutter_plugin:map:12.6.2")
 }

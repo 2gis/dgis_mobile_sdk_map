@@ -113,6 +113,12 @@ class PolylineOptionsDialogState extends State<PolylineOptionsDialog> {
                     onChanged: (value) => setState(() => width = value!),
                   ),
                   RadioListTile<double>(
+                    title: const Text('Medium'),
+                    value: 5,
+                    groupValue: width,
+                    onChanged: (value) => setState(() => width = value!),
+                  ),
+                  RadioListTile<double>(
                     title: const Text('Thick'),
                     value: 10,
                     groupValue: width,
@@ -124,6 +130,13 @@ class PolylineOptionsDialogState extends State<PolylineOptionsDialog> {
               const Text('Color:'),
               Column(
                 children: <Widget>[
+                  RadioListTile<int>(
+                    title: const Text('Black'),
+                    value: Colors.black.value,
+                    groupValue: selectedColor,
+                    onChanged: (value) =>
+                        setState(() => selectedColor = value!),
+                  ),
                   RadioListTile<int>(
                     title: const Text('Red'),
                     value: Colors.red.value,

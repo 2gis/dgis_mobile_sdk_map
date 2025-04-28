@@ -112,6 +112,13 @@ class PolygonOptionsDialogState extends State<PolygonOptionsDialog> {
               Column(
                 children: <Widget>[
                   RadioListTile<int>(
+                    title: const Text('Black'),
+                    value: Colors.black.value,
+                    groupValue: selectedColor,
+                    onChanged: (value) =>
+                        setState(() => selectedColor = value!),
+                  ),
+                  RadioListTile<int>(
                     title: const Text('Red'),
                     value: Colors.red.value,
                     groupValue: selectedColor,
@@ -131,6 +138,13 @@ class PolygonOptionsDialogState extends State<PolygonOptionsDialog> {
               const Text('Stroke Color:'),
               Column(
                 children: <Widget>[
+                  RadioListTile<int>(
+                    title: const Text('Black'),
+                    value: Colors.black.value,
+                    groupValue: selectedStrokeColor,
+                    onChanged: (value) =>
+                        setState(() => selectedStrokeColor = value!),
+                  ),
                   RadioListTile<int>(
                     title: const Text('Red'),
                     value: Colors.red.value,
@@ -154,6 +168,12 @@ class PolygonOptionsDialogState extends State<PolygonOptionsDialog> {
                   RadioListTile<double>(
                     title: const Text('Thin'),
                     value: 1,
+                    groupValue: strokeWidth,
+                    onChanged: (value) => setState(() => strokeWidth = value!),
+                  ),
+                  RadioListTile<double>(
+                    title: const Text('Medium'),
+                    value: 5,
                     groupValue: strokeWidth,
                     onChanged: (value) => setState(() => strokeWidth = value!),
                   ),

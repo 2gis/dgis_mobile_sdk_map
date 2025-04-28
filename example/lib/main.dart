@@ -1,5 +1,5 @@
 import 'pages/add_objects.dart';
-import 'pages/all_map_controls.dart';
+import 'pages/all_map_widgets.dart';
 import 'pages/benchmark.dart';
 import 'pages/calc_position.dart';
 import 'pages/camera_moves.dart';
@@ -91,7 +91,7 @@ class _MyHomePageState extends State<MyHomePage> {
               context,
               MaterialPageRoute(
                   builder: (context) =>
-                      AllMapControlsPage(title: 'All map widgets')),
+                      AllMapWidgetsPage(title: 'All map widgets')),
             );
           },
         ),

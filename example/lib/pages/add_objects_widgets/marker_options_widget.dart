@@ -8,6 +8,7 @@ class MarkerOptionsDialog extends StatefulWidget {
   final String initialText;
   final MarkerType initialMarkerType;
   final double initialMarkerWidth;
+  final String initialMarkerElevation;
   final GlobalKey<FormState> formKey;
   final void Function(
     String userData,
@@ -15,6 +16,7 @@ class MarkerOptionsDialog extends StatefulWidget {
     String text,
     MarkerType markerType,
     double markerWidth,
+    String markerElevation,
   ) onAddMarker;
 
   const MarkerOptionsDialog({
@@ -23,6 +25,7 @@ class MarkerOptionsDialog extends StatefulWidget {
     required this.initialText,
     required this.initialMarkerType,
     required this.initialMarkerWidth,
+    required this.initialMarkerElevation,
     required this.formKey,
     required this.onAddMarker,
     super.key,
@@ -38,6 +41,7 @@ class MarkerOptionsDialogState extends State<MarkerOptionsDialog> {
   late TextEditingController textController;
   late MarkerType markerType;
   late double markerWidth;
+  late TextEditingController markerElevation;
 
   @override
   void initState() {
@@ -47,6 +51,8 @@ class MarkerOptionsDialogState extends State<MarkerOptionsDialog> {
     textController = TextEditingController(text: widget.initialText);
     markerType = widget.initialMarkerType;
     markerWidth = widget.initialMarkerWidth;
+    markerElevation =
+        TextEditingController(text: widget.initialMarkerElevation);
   }
 
   @override
@@ -142,6 +148,23 @@ class MarkerOptionsDialogState extends State<MarkerOptionsDialog> {
                   const SizedBox(height: 10),
                 ],
               ),
+              ListTile(
+                title: TextFormField(
+                  controller: markerElevation,
+                  decoration: const InputDecoration(
+                    labelText: 'Marker Elevation',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a value for Elevation';
+                    }
+                    if (int.tryParse(value) == null) {
+                      return 'Please enter a valid integer';
+                    }
+                    return null;
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -162,6 +185,7 @@ class MarkerOptionsDialogState extends State<MarkerOptionsDialog> {
                 textController.text,
                 markerType,
                 markerWidth,
+                markerElevation.text,
               );
               Navigator.of(context).pop();
             }

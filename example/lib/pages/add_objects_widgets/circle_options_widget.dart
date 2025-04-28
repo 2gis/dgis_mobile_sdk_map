@@ -68,7 +68,7 @@ class CircleOptionsDialogState extends State<CircleOptionsDialog> {
                 title: TextFormField(
                   controller: radiusController,
                   decoration: const InputDecoration(
-                    labelText: 'Radius',
+                    labelText: 'Radius, m',
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -111,6 +111,13 @@ class CircleOptionsDialogState extends State<CircleOptionsDialog> {
               Column(
                 children: <Widget>[
                   RadioListTile<int>(
+                    title: const Text('Black'),
+                    value: Colors.black.value,
+                    groupValue: selectedColor,
+                    onChanged: (value) =>
+                        setState(() => selectedColor = value!),
+                  ),
+                  RadioListTile<int>(
                     title: const Text('Red'),
                     value: Colors.red.value,
                     groupValue: selectedColor,
@@ -131,6 +138,13 @@ class CircleOptionsDialogState extends State<CircleOptionsDialog> {
               Column(
                 children: <Widget>[
                   RadioListTile<int>(
+                    title: const Text('Black'),
+                    value: Colors.black.value,
+                    groupValue: selectedStrokeColor,
+                    onChanged: (value) =>
+                        setState(() => selectedStrokeColor = value!),
+                  ),
+                  RadioListTile<int>(
                     title: const Text('Red'),
                     value: Colors.red.value,
                     groupValue: selectedStrokeColor,
@@ -150,6 +164,12 @@ class CircleOptionsDialogState extends State<CircleOptionsDialog> {
               const Text('Stroke Width:'),
               Column(
                 children: <Widget>[
+                  RadioListTile<double>(
+                    title: const Text('None'),
+                    value: 0,
+                    groupValue: strokeWidth,
+                    onChanged: (value) => setState(() => strokeWidth = value!),
+                  ),
                   RadioListTile<double>(
                     title: const Text('Thin'),
                     value: 1,

@@ -36,6 +36,7 @@ class _SamplePageState extends State<ClusteringPage> {
   static int markersCount = 0;
 
   late sdk.ImageLoader loader;
+  late sdk.Camera camera;
 
   sdk.Map? sdkMap;
   sdk.MapObjectManager? mapObjectManager;
@@ -100,9 +101,22 @@ class _SamplePageState extends State<ClusteringPage> {
           minZoomText,
           maxZoomText,
         );
+        camera = map.camera;
+        await _waitNotNullMapSize();
         await _add();
       })
       ..copyrightAlignment = Alignment.bottomLeft;
+  }
+
+  Future<void> _waitNotNullMapSize() async {
+    final completer = Completer<void>();
+    final subscription = camera.sizeChannel.listen((size) {
+      if (size.height > 0) {
+        completer.complete();
+      }
+    });
+    await completer.future;
+    await subscription.cancel();
   }
 
   void _show() {
@@ -344,7 +358,6 @@ class _SamplePageState extends State<ClusteringPage> {
 
   sdk.GeoPointWithElevation _makePoint() {
     final random = Random();
-    final camera = sdkMap!.camera;
     final minHeight = camera.size.height / 3;
     final maxHeight = camera.size.height - (camera.size.height / 3);
     final randomHeight =
@@ -380,12 +393,14 @@ class _SamplePageState extends State<ClusteringPage> {
           const sdk.LogicalPixel(80),
           sdk.Zoom(maxZoom),
           await lazyClusterRenderer,
+          sdk.Zoom(minZoom),
         );
       case _GroupingType.generalization:
         return sdk.MapObjectManager.withGeneralization(
           map,
           const sdk.LogicalPixel(80),
           sdk.Zoom(maxZoom),
+          sdk.Zoom(minZoom),
         );
     }
   }

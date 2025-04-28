@@ -19,6 +19,7 @@ class _SamplePageState extends State<CalcPositionPage> {
   final _sdkContext = AppContainer().initializeSdk();
   final _mapWidgetController = sdk.MapWidgetController();
   final _circleAssetsPath = 'assets/icons/circle.png';
+  final ValueNotifier<double?> _deviceDensity = ValueNotifier<double?>(null);
 
   sdk.StyleZoomToTiltRelation? _styleZoomToTiltRelation;
   sdk.Padding? _padding;
@@ -58,6 +59,7 @@ class _SamplePageState extends State<CalcPositionPage> {
             mapOptions: sdk.MapOptions(),
             controller: _mapWidgetController,
           ),
+          _buildPositionedOverlay(),
           Align(
             alignment: Alignment.bottomRight,
             child: Column(
@@ -74,16 +76,6 @@ class _SamplePageState extends State<CalcPositionPage> {
               ],
             ),
           ),
-          Center(
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: const BoxDecoration(
-                color: Colors.red,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -91,18 +83,44 @@ class _SamplePageState extends State<CalcPositionPage> {
 
   void initContext() {
     _loader = sdk.ImageLoader(_sdkContext);
-    _mapWidgetController.getMapAsync((map) {
-      _sdkMap = map;
-      _sdkCamera = map.camera;
-      _mapObjectManager = sdk.MapObjectManager(map);
-      _initMarkers();
-      _initMarkersOn0();
-      _initMarkersOn180Meridian();
-      _initRectMarkersOn0();
-      _initRectMarkersOn180Meridian();
-      _initCircle();
-      _initPolygon();
-    });
+    _mapWidgetController
+      ..getMapAsync((map) {
+        _sdkMap = map;
+        _sdkCamera = map.camera;
+        _mapObjectManager = sdk.MapObjectManager(map);
+        _initMarkers();
+        _initMarkersOn0();
+        _initMarkersOn180Meridian();
+        _initRectMarkersOn0();
+        _initRectMarkersOn180Meridian();
+        _initCircle();
+        _initPolygon();
+        _deviceDensity.value = map.camera.deviceDensity.value;
+      })
+      ..copyrightAlignment = Alignment.bottomLeft;
+  }
+
+  Widget _buildPositionedOverlay() {
+    return ValueListenableBuilder<double?>(
+      valueListenable: _deviceDensity,
+      builder: (context, deviceDensity, child) {
+        if (deviceDensity == null) return const SizedBox.shrink();
+        return Positioned(
+          top: _sdkMap?.camera.padding.top.toDouble() ?? 0 / deviceDensity,
+          bottom:
+              _sdkMap?.camera.padding.bottom.toDouble() ?? 0 / deviceDensity,
+          left: _sdkMap?.camera.padding.left.toDouble() ?? 0 / deviceDensity,
+          right: _sdkMap?.camera.padding.right.toDouble() ?? 0 / deviceDensity,
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.red, width: 2),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _show() {
@@ -244,12 +262,12 @@ class _SamplePageState extends State<CalcPositionPage> {
                           setState(() {
                             _switchValue = value;
                             if (_switchValue) {
-                              _sdkCamera
-                                ..padding = const sdk.Padding()
-                                ..position = _sdkCamera.position.copyWith(
-                                  bearing: const sdk.Bearing(),
-                                  tilt: const sdk.Tilt(),
-                                );
+                              _sdkCamera.position =
+                                  _sdkCamera.position.copyWith(
+                                bearing: const sdk.Bearing(),
+                                tilt: const sdk.Tilt(),
+                              );
+                              _updateMapPadding(const sdk.Padding());
                             }
                           });
                         },
@@ -391,7 +409,9 @@ class _SamplePageState extends State<CalcPositionPage> {
   }
 
   void _updateMapPadding(sdk.Padding padding) {
-    _sdkCamera.padding = padding;
+    setState(() {
+      _sdkCamera.padding = padding;
+    });
   }
 
   Future<void> _initMarkers() async {

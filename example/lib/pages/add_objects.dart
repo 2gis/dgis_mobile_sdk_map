@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import 'add_objects_widgets/circle_options_widget.dart';
 import 'add_objects_widgets/marker_options_widget.dart';
+import 'add_objects_widgets/model_options_widget.dart';
 import 'add_objects_widgets/polygon_options_widget.dart';
 import 'add_objects_widgets/polyline_options_widget.dart';
 import 'common.dart';
@@ -29,12 +30,15 @@ class _SamplePageState extends State<AddObjectsPage> {
   final _scooterAssetsPath = 'assets/icons/scooter_model.png';
   final _bridgeAssetsPath = 'assets/icons/bridge.svg';
   final _batAssetsPath = 'assets/icons/bat.json';
+  final _pinAssetsPath = 'assets/icons/topGoMarker.png';
+  final _airplaneAssetsPath = 'assets/models/airplane.glb';
   final _imageCache = <String, sdk.Image>{};
   MarkerType _markerType = MarkerType.scooterPng;
 
   sdk.Map? _sdkMap;
   sdk.MapObjectManager? _mapObjectManager;
   late sdk.ImageLoader _loader;
+  late sdk.ModelLoader _modelLoader;
 
   String _circleRadius = '100';
   String _circleUserData = '';
@@ -60,6 +64,12 @@ class _SamplePageState extends State<AddObjectsPage> {
   String _markerZIndex = '1';
   String _markerText = 'Marker';
   double _markerWidth = 45;
+  String _markerElevation = '0';
+
+  String _modelUserData = '';
+  String _modelSize = '50';
+  bool _modelScaleEnabled = false;
+  sdk.ModelData? _modelData;
 
   @override
   void initState() {
@@ -102,10 +112,13 @@ class _SamplePageState extends State<AddObjectsPage> {
 
   void initContext() {
     _loader = sdk.ImageLoader(_sdkContext);
-    _mapWidgetController.getMapAsync((map) {
-      _sdkMap = map;
-      _mapObjectManager = sdk.MapObjectManager(map);
-    });
+    _modelLoader = sdk.ModelLoader(_sdkContext);
+    _mapWidgetController
+      ..getMapAsync((map) {
+        _sdkMap = map;
+        _mapObjectManager = sdk.MapObjectManager(map);
+      })
+      ..copyrightAlignment = Alignment.bottomLeft;
   }
 
   void _show() {
@@ -131,6 +144,13 @@ class _SamplePageState extends State<AddObjectsPage> {
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
+              _showModelOptions();
+            },
+            child: const Text('Model'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
               _showPolylineOptions();
             },
             child: const Text('Polyline'),
@@ -143,6 +163,18 @@ class _SamplePageState extends State<AddObjectsPage> {
               _showPolygonOptions();
             },
             child: const Text('Polygon'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _addTopGoMarker(
+                _sdkMap!.camera.position.point.latitude.value,
+                _sdkMap!.camera.position.point.longitude.value,
+                _pinAssetsPath,
+                'Marker from topGo',
+              );
+            },
+            child: const Text('Marker from TopGo'),
           ),
         ],
         cancelButton: CupertinoActionSheetAction(
@@ -300,14 +332,23 @@ class _SamplePageState extends State<AddObjectsPage> {
           initialText: _markerText,
           initialMarkerType: _markerType,
           initialMarkerWidth: _markerWidth,
+          initialMarkerElevation: _markerElevation,
           formKey: _formKey,
-          onAddMarker: (userData, zIndex, text, markerType, markerWidth) {
+          onAddMarker: (
+            userData,
+            zIndex,
+            text,
+            markerType,
+            markerWidth,
+            markerElevation,
+          ) {
             setState(() {
               _markerUserData = userData;
               _markerZIndex = zIndex;
               _markerText = text;
               _markerType = markerType;
               _markerWidth = markerWidth;
+              _markerElevation = markerElevation;
             });
             _addMarker();
           },
@@ -322,6 +363,7 @@ class _SamplePageState extends State<AddObjectsPage> {
         position: sdk.GeoPointWithElevation(
           latitude: _sdkMap!.camera.position.point.latitude,
           longitude: _sdkMap!.camera.position.point.longitude,
+          elevation: sdk.Elevation(double.tryParse(_markerElevation)!),
         ),
         icon: await _getMarkerImage(_markerType),
         iconWidth: sdk.LogicalPixel(_markerWidth),
@@ -350,6 +392,61 @@ class _SamplePageState extends State<AddObjectsPage> {
     }
   }
 
+  void _showModelOptions() {
+    showAdaptiveDialog(
+      context: context,
+      builder: (context) {
+        return ModelOptionsDialog(
+          initialUserData: _modelUserData,
+          initialSize: _modelSize,
+          initialScaleEnable: _modelScaleEnabled,
+          formKey: _formKey,
+          onAddModel: (
+            userData,
+            size, {
+            required initialScaleEnable,
+          }) {
+            setState(() {
+              _modelUserData = userData;
+              _modelSize = size;
+              _modelScaleEnabled = initialScaleEnable;
+            });
+            _addModel();
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _addModel() async {
+    final model = sdk.ModelMapObject(
+      sdk.ModelMapObjectOptions(
+        position: sdk.GeoPointWithElevation(
+          latitude: _sdkMap!.camera.position.point.latitude,
+          longitude: _sdkMap!.camera.position.point.longitude,
+        ),
+        data: await _getModelData(),
+        size: _getModelSize(),
+        userData: _markerUserData,
+      ),
+    );
+    _mapObjectManager?.addObject(model);
+  }
+
+  Future<sdk.ModelData> _getModelData() async {
+    _modelData ??= await _modelLoader.loadFromAsset(_airplaneAssetsPath);
+    return _modelData!;
+  }
+
+  sdk.ModelSize _getModelSize() {
+    final modelSizeValue = double.tryParse(_modelSize)!;
+    if (_modelScaleEnabled) {
+      return sdk.ModelSize.scale(sdk.ModelScale(modelSizeValue));
+    } else {
+      return sdk.ModelSize.logicalPixel(sdk.LogicalPixel(modelSizeValue));
+    }
+  }
+
   void _removeObjects() {
     _mapObjectManager?.removeAll();
   }
@@ -368,5 +465,38 @@ class _SamplePageState extends State<AddObjectsPage> {
         y: randomHeight,
       ),
     );
+  }
+
+  Future<void> _addTopGoMarker(
+    double lat,
+    double lon,
+    String img,
+    String text, {
+    int size = 30,
+    double iconWidth = 30,
+    double strokeWidth = 10,
+    double textOffset = 5,
+  }) async {
+    final point = sdk.GeoPointWithElevation(
+      latitude: sdk.Latitude(lat),
+      longitude: sdk.Longitude(lon),
+    );
+    final icon = await _loader.loadPngFromAsset(img, size, size);
+    final markerTopGo = sdk.Marker(
+      sdk.MarkerOptions(
+        position: point,
+        icon: icon,
+        iconWidth: sdk.LogicalPixel(iconWidth),
+        text: text,
+        textStyle: sdk.TextStyle(
+          textPlacement: sdk.TextPlacement.topCenter,
+          strokeWidth: sdk.LogicalPixel(strokeWidth),
+          textOffset: sdk.LogicalPixel(textOffset),
+          strokeColor: sdk.Color(Colors.black.value),
+          color: sdk.Color(Colors.white.value),
+        ),
+      ),
+    );
+    _mapObjectManager?.addObject(markerTopGo);
   }
 }

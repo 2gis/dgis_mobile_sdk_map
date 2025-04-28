@@ -54,7 +54,6 @@ class _CopyrightPageState extends State<CopyrightPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: Text(widget.title)),
       body: Stack(
         children: <Widget>[
           sdk.MapWidget(

@@ -20,12 +20,21 @@ class _MapObjectsIdentificationState
   final sdkContext = AppContainer().initializeSdk();
   final mapWidgetController = sdk.MapWidgetController();
   final formKey = GlobalKey<FormState>();
+  bool isParkingEnabled = false;
+  bool isTUGCEnabled = false;
+  bool isCircleEnabled = false;
+
   List<sdk.DgisObjectId> highlightedObjectIds = [];
   sdk.MapObjectManager? mapObjectManager;
   sdk.Marker? selectedObject;
   sdk.DgisSource? dgisSource;
+  sdk.Map? sdkMap;
+
   late sdk.SearchManager searchManager;
   late sdk.ImageLoader loader;
+  late sdk.RoadEventSource roadEventSource;
+  late sdk.MyLocationMapObjectSource locationSource;
+  late sdk.Circle circle;
 
   @override
   void initState() {
@@ -44,6 +53,58 @@ class _MapObjectsIdentificationState
             mapOptions: sdk.MapOptions(),
             controller: mapWidgetController,
           ),
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SwitchListTile(
+                    title: const Text('TUGC enable'),
+                    value: isTUGCEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        isTUGCEnabled = value;
+                        if (isTUGCEnabled) {
+                          sdkMap?.addSource(roadEventSource);
+                        } else {
+                          sdkMap?.removeSource(roadEventSource);
+                        }
+                      });
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Show parking'),
+                    value: isParkingEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        isParkingEnabled = value;
+                        sdkMap?.attributes.setAttributeValue(
+                          'parkingOn',
+                          sdk.AttributeValue.boolean(value),
+                        );
+                      });
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Show circle'),
+                    value: isCircleEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        isCircleEnabled = value;
+                        if (isCircleEnabled) {
+                          _addCircle();
+                        } else {
+                          mapObjectManager?.removeAll();
+                        }
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -52,36 +113,62 @@ class _MapObjectsIdentificationState
   Future<void> initContext() async {
     searchManager = sdk.SearchManager.createOnlineManager(sdkContext);
     loader = sdk.ImageLoader(sdkContext);
-    mapWidgetController
-      ..getMapAsync(
-        (map) {
-          mapObjectManager = sdk.MapObjectManager(map);
-        },
-      )
-      ..addObjectLongTouchCallback(_showObjectCard)
-      ..addObjectTappedCallback(
-        (objectInfo) async {
-          final objectId = _getObjectId(objectInfo);
-          if (objectId == null) {
-            return;
-          }
+    final locationService = sdk.LocationService(sdkContext);
+    roadEventSource = sdk.RoadEventSource(sdkContext);
 
-          await _setSelectedObject(objectInfo);
-          dgisSource = objectInfo.item.source as sdk.DgisSource;
-          await searchManager.searchByDirectoryObjectId(objectId).value.then(
-                _showDirectoryObjectCard,
-              );
-        },
-      );
+    await checkLocationPermissions(locationService);
+    mapWidgetController
+      ..getMapAsync((map) {
+        sdkMap = map;
+        mapObjectManager = sdk.MapObjectManager(map);
+        const locationController = sdk.MyLocationControllerSettings(
+          bearingSource: sdk.BearingSource.satellite,
+        );
+        locationSource =
+            sdk.MyLocationMapObjectSource(sdkContext, locationController);
+        map.addSource(locationSource);
+      })
+      ..addObjectLongTouchCallback(_showObjectCard)
+      ..addObjectTappedCallback(_handleObjectTapped);
   }
 
-  void _showObjectCard(sdk.RenderedObjectInfo objectInfo) {
-    final objectId = _getObjectId(objectInfo);
-    if (objectId == null) {
+  Future<void> _handleObjectTapped(sdk.RenderedObjectInfo objectInfo) async {
+    final object = objectInfo.item.item;
+
+    if (object is sdk.RoadEventMapObject) {
+      _showRoadEventDialog(object);
+      return;
+    }
+    if (object is sdk.MyLocationMapObject) {
+      _showMyLocationDialog(object);
+      return;
+    }
+    if (object is sdk.SimpleMapObject) {
+      _showSimpleMapObjectDialog(object);
       return;
     }
 
-    _setSelectedObject(objectInfo);
+    if (object is sdk.DgisMapObject) {
+      final objectId = _getObjectId(objectInfo);
+      if (objectId == null) {
+        return;
+      }
+      await _setSelectedObject(objectInfo);
+      dgisSource = objectInfo.item.source as sdk.DgisSource;
+      final directoryObject =
+          await searchManager.searchByDirectoryObjectId(objectId).value;
+      _showDirectoryObjectCard(directoryObject);
+      return;
+    }
+  }
+
+  void _showObjectCard(sdk.RenderedObjectInfo objectInfo) {
+    final object = objectInfo.item.item;
+
+    if (object is sdk.DgisMapObject) {
+      _setSelectedObject(objectInfo);
+    }
+
     showAdaptiveDialog(
       context: context,
       builder: (context) {
@@ -96,9 +183,6 @@ class _MapObjectsIdentificationState
                 shrinkWrap: true,
                 children: <Widget>[
                   Text(
-                    'ID: ${objectId.objectId}',
-                  ),
-                  Text(
                     'ClosestViewportPoint: (${objectInfo.closestViewportPoint.x}, ${objectInfo.closestViewportPoint.y})',
                   ),
                   Text(
@@ -106,6 +190,132 @@ class _MapObjectsIdentificationState
                   ),
                   Text(
                     'LevelId: ${objectInfo.item.levelId?.value}',
+                  ),
+                  Text(
+                    'Class: ${objectInfo.item.item.runtimeType}',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showRoadEventDialog(sdk.RoadEventMapObject object) {
+    showAdaptiveDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('RoadEventMapObject'),
+          content: Form(
+            key: formKey,
+            child: SizedBox(
+              height: 250,
+              width: 50,
+              child: ListView(
+                shrinkWrap: true,
+                children: <Widget>[
+                  Text(
+                    'Class: ${object.runtimeType}',
+                  ),
+                  Text(
+                    'Event: ${object.event.description}',
+                  ),
+                  Text(
+                    'ID: ${object.id.objectId}',
+                  ),
+                  Text(
+                    'UserData: ${object.userData}',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showMyLocationDialog(sdk.MyLocationMapObject object) {
+    showAdaptiveDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('MyLocationMapObject'),
+          content: Form(
+            key: formKey,
+            child: SizedBox(
+              height: 250,
+              width: 50,
+              child: ListView(
+                shrinkWrap: true,
+                children: <Widget>[
+                  Text(
+                    'Class: ${object.runtimeType}',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSimpleMapObjectDialog(sdk.SimpleMapObject object) {
+    showAdaptiveDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('SimpleMapObject'),
+          content: Form(
+            key: formKey,
+            child: SizedBox(
+              height: 250,
+              width: 50,
+              child: ListView(
+                shrinkWrap: true,
+                children: <Widget>[
+                  Text(
+                    'Class: ${object.runtimeType}',
+                  ),
+                  Text(
+                    'UserData: ${object.userData}',
+                  ),
+                  Text(
+                    'zIndex: ${object.zIndex.value}',
+                  ),
+                  Text(
+                    'NorthEastPoint latitude: ${object.bounds.northEastPoint.latitude.value}, NorthEastPoint longitude: ${object.bounds.northEastPoint.longitude.value}',
+                  ),
+                  Text(
+                    'SouthWestPoint latitude: ${object.bounds.southWestPoint.latitude.value}, SouthWestPoint longitude: ${object.bounds.southWestPoint.longitude.value}',
                   ),
                 ],
               ),
@@ -198,7 +408,9 @@ class _MapObjectsIdentificationState
     if (position != null) {
       infoWidgets.add(
         Text(
-          'Latitude: ${position.latitude.value.toStringAsFixed(6)}, Longitude: ${position.longitude.value.toStringAsFixed(6)}',
+          'Latitude: ${position.latitude.value.toStringAsFixed(
+            6,
+          )}, Longitude: ${position.longitude.value.toStringAsFixed(6)}',
         ),
       );
     }
@@ -240,5 +452,24 @@ class _MapObjectsIdentificationState
       highlightedObjectIds.add(entrance.id);
     }
     dgisSource?.setHighlighted(highlightedObjectIds, true);
+  }
+
+  void _addCircle() {
+    final circlePosition = sdk.GeoPoint(
+      latitude: sdk.Latitude(sdkMap!.camera.position.point.latitude.value),
+      longitude: sdk.Longitude(sdkMap!.camera.position.point.longitude.value),
+    );
+    circle = sdk.Circle(
+      sdk.CircleOptions(
+        position: circlePosition,
+        radius: const sdk.Meter(5000),
+        color: sdk.Color(Colors.red.value),
+        strokeColor: sdk.Color(Colors.blue.value),
+        strokeWidth: const sdk.LogicalPixel(1),
+        userData: 'Userdata',
+        zIndex: const sdk.ZIndex(12),
+      ),
+    );
+    mapObjectManager?.addObject(circle);
   }
 }
