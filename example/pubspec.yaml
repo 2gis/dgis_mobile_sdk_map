@@ -29,5 +29,6 @@ flutter:
   # It is obligatory to add your key to assets directory of this example app
   assets:
     - assets/icons/
+    - assets/models/
     - assets/dgissdk.key # ignore: asset_does_not_exist
     - assets/custom_styles.2gis

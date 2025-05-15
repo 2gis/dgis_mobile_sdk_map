@@ -429,7 +429,9 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   _MapGestureController? _mapGestureController;
   StreamSubscription<sdk.DevicePpi>? _devicePpiSubscription;
   double _deviceDensity = 1;
+  double _devicePpi = 1;
   late final ValueNotifier<MapTheme> _mapTheme;
+  bool isMapInitialized = false;
 
   @override
   void initState() {
@@ -445,7 +447,18 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     if (widget.child != null) {
       mapWidgetController._addMapThemeChangedCallback(_onMapThemeChanged);
     }
-    _initialize();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!isMapInitialized) {
+      _deviceDensity = widget._mapOptions.deviceDensity?.value ??
+          MediaQuery.devicePixelRatioOf(context);
+      _devicePpi =
+          widget._mapOptions.devicePPI?.value ?? _deviceDensity * 160.0;
+      _initialize();
+    }
   }
 
   @override
@@ -531,8 +544,12 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   }
 
   Future<void> _initialize() async {
-    final builder =
-        await sdk.MapBuilder().apply(widget._mapOptions, widget._sdkContext);
+    final builder = await sdk.MapBuilder().apply(
+      widget._mapOptions,
+      widget._sdkContext,
+      _deviceDensity,
+      _devicePpi,
+    );
     final map = await builder.createMap(widget._sdkContext).value;
     mapWidgetController
       .._map = map
@@ -551,7 +568,6 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
     final mapGestureRecognizer = sdk.MapGestureRecognizer.create(map);
     mapWidgetController._mapGestureRecognizer = mapGestureRecognizer;
-    _deviceDensity = map.camera.deviceDensity.value;
     _mapGestureController = _MapGestureController(
       mapGestureRecognizer,
       _deviceDensity,
@@ -573,6 +589,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         });
       }
     });
+    isMapInitialized = true;
   }
 
   void _updateMapSize(Size newSize) {
@@ -623,24 +640,17 @@ extension _MapBuilderApplyMapOptions on sdk.MapBuilder {
   Future<sdk.MapBuilder> apply(
     MapOptions options,
     sdk.Context sdkContext,
+    double deviceDensity,
+    double devicePpi,
   ) async {
     final builder = sdk.MapBuilder()
         .setPosition(options.position)
         .setPositionPoint(options.positionPoint)
-        .setZoomRestrictions(options.zoomRestrictions);
-
-    if (options.devicePPI != null && options.deviceDensity != null) {
-      builder.setDevicePpi(options.devicePPI!, options.deviceDensity!);
-    } else {
-      final dispatcher = WidgetsBinding.instance.platformDispatcher;
-      final display = dispatcher.displays.first;
-      final deviceDensity = display.devicePixelRatio;
-      final deviceDpi = deviceDensity * 160.0;
-      builder.setDevicePpi(
-        sdk.DevicePpi(deviceDpi),
-        sdk.DeviceDensity(deviceDensity),
-      );
-    }
+        .setZoomRestrictions(options.zoomRestrictions)
+        .setDevicePpi(
+          sdk.DevicePpi(devicePpi),
+          sdk.DeviceDensity(deviceDensity),
+        );
 
     if (options.sources != null) {
       options.sources!.forEach(builder.addSource);
