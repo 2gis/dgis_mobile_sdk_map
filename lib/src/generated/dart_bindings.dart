@@ -5969,6 +5969,10 @@ class EntranceInfo {
   final List<ApartmentRange> apartmentRanges;
   /** Геометрии для отображения входа на карте. */
   final EntranceGeometry? geometry;
+  /**
+   Номер входа на станцию.
+   Будет содержать информацию для объекта с типом ObjectType.StationEntrance.
+  */
   final String? entranceNumber;
 
   const EntranceInfo({
@@ -8763,6 +8767,71 @@ extension _CPublicTransportDirectoryRouteDirectionNamesInfoRelease on _CPublicTr
   }
 }
 
+// MARK: - PublicTransportRouteType
+
+/** Тип маршрута общественного транспорта. */
+enum PublicTransportRouteType {
+  /** Автобус. */
+  bus(0),
+  /** Троллейбус. */
+  trolleybus(1),
+  /** Трамвай. */
+  tram(2),
+  /** Маршрутное такси. */
+  shuttleBus(3),
+  /** Метро. */
+  metro(4),
+  /** Электропоезд. */
+  suburbanTrain(5),
+  /** Фуникулёр. */
+  funicularRailway(6),
+  /** Монорельс. */
+  monorail(7),
+  /** Водный транспорт. */
+  riverTransport(8),
+  /** Канатная дорога. */
+  cableCar(9),
+  /** Скоростной трамвай. */
+  lightRail(10),
+  /** Метротрамвай. */
+  premetro(11),
+  /** Лёгкое метро. */
+  lightMetro(12),
+  /** Аэроэкспресс. */
+  aeroexpress(13),
+  ;
+
+  const PublicTransportRouteType(this.rawValue);
+  final int rawValue;
+
+  static PublicTransportRouteType getByValue(int value) {
+    return PublicTransportRouteType.values.firstWhere((x) => x.rawValue == value);
+  }
+}
+
+
+final class _CPublicTransportRouteType extends ffi.Struct {
+  @ffi.Uint32()
+  external int rawValue;
+}
+
+extension _CPublicTransportRouteTypeBasicFunctions on _CPublicTransportRouteType {
+  void _releaseIntermediate() {
+  }
+}
+
+extension _CPublicTransportRouteTypeToDart on _CPublicTransportRouteType {
+  PublicTransportRouteType _toDart() {
+    return PublicTransportRouteType.getByValue(this.rawValue);
+  }
+}
+
+extension _DartTo_CPublicTransportRouteType on PublicTransportRouteType {
+  _CPublicTransportRouteType _copyFromDartTo_CPublicTransportRouteType() {
+    return _CPublicTransportRouteTypeMakeDefault()..rawValue = this.rawValue;
+  }
+}
+	
 // MARK: - PublicTransportRouteDirectionId
 
 /** Идентификатор направления маршрута общественного транспорта. */
@@ -9038,71 +9107,6 @@ extension _CPublicTransportRouteGeometryRelease on _CPublicTransportRouteGeometr
   }
 }
 
-// MARK: - PublicTransportRouteType
-
-/** Тип маршрута общественного транспорта. */
-enum PublicTransportRouteType {
-  /** Автобус. */
-  bus(0),
-  /** Троллейбус. */
-  trolleybus(1),
-  /** Трамвай. */
-  tram(2),
-  /** Маршрутное такси. */
-  shuttleBus(3),
-  /** Метро. */
-  metro(4),
-  /** Электропоезд. */
-  suburbanTrain(5),
-  /** Фуникулёр. */
-  funicularRailway(6),
-  /** Монорельс. */
-  monorail(7),
-  /** Водный транспорт. */
-  riverTransport(8),
-  /** Канатная дорога. */
-  cableCar(9),
-  /** Скоростной трамвай. */
-  lightRail(10),
-  /** Метротрамвай. */
-  premetro(11),
-  /** Лёгкое метро. */
-  lightMetro(12),
-  /** Аэроэкспресс. */
-  aeroexpress(13),
-  ;
-
-  const PublicTransportRouteType(this.rawValue);
-  final int rawValue;
-
-  static PublicTransportRouteType getByValue(int value) {
-    return PublicTransportRouteType.values.firstWhere((x) => x.rawValue == value);
-  }
-}
-
-
-final class _CPublicTransportRouteType extends ffi.Struct {
-  @ffi.Uint32()
-  external int rawValue;
-}
-
-extension _CPublicTransportRouteTypeBasicFunctions on _CPublicTransportRouteType {
-  void _releaseIntermediate() {
-  }
-}
-
-extension _CPublicTransportRouteTypeToDart on _CPublicTransportRouteType {
-  PublicTransportRouteType _toDart() {
-    return PublicTransportRouteType.getByValue(this.rawValue);
-  }
-}
-
-extension _DartTo_CPublicTransportRouteType on PublicTransportRouteType {
-  _CPublicTransportRouteType _copyFromDartTo_CPublicTransportRouteType() {
-    return _CPublicTransportRouteTypeMakeDefault()..rawValue = this.rawValue;
-  }
-}
-	
 // MARK: - int? <-> _COptional_uint32_t
 
 final class _COptional_uint32_t extends ffi.Struct {
@@ -9659,6 +9663,8 @@ class PublicTransportDirectoryRouteInfo {
   final DgisObjectId id;
   /** Название маршрута. */
   final String name;
+  /** Тип маршрута. */
+  final PublicTransportRouteType routeType;
   /** Цветовое кодирование маршрута. */
   final int? color;
   /** Информация о наименованиях начальной и конечной остановках маршрута. */
@@ -9674,6 +9680,7 @@ class PublicTransportDirectoryRouteInfo {
   const PublicTransportDirectoryRouteInfo({
     required this.id,
     required this.name,
+    required this.routeType,
     required this.color,
     required this.fromToStationNames,
     required this.directions
@@ -9682,6 +9689,7 @@ class PublicTransportDirectoryRouteInfo {
   PublicTransportDirectoryRouteInfo copyWith({
     DgisObjectId? id,
     String? name,
+    PublicTransportRouteType? routeType,
     Optional<int?>? color,
     Optional<PublicTransportDirectoryRouteDirectionNamesInfo?>? fromToStationNames,
     List<PublicTransportRouteDirection>? directions
@@ -9689,6 +9697,7 @@ class PublicTransportDirectoryRouteInfo {
     return PublicTransportDirectoryRouteInfo(
       id: id ?? this.id,
       name: name ?? this.name,
+      routeType: routeType ?? this.routeType,
       color: color != null ? color.value : this.color,
       fromToStationNames: fromToStationNames != null ? fromToStationNames.value : this.fromToStationNames,
       directions: directions ?? this.directions
@@ -9700,13 +9709,14 @@ class PublicTransportDirectoryRouteInfo {
     other.runtimeType == runtimeType &&
     other.id == id &&
     other.name == name &&
+    other.routeType == routeType &&
     other.color == color &&
     other.fromToStationNames == fromToStationNames &&
     other.directions == directions;
 
   @override
   int get hashCode {
-    return Object.hash(id, name, color, fromToStationNames, directions);
+    return Object.hash(id, name, routeType, color, fromToStationNames, directions);
   }
 
 }
@@ -9714,6 +9724,8 @@ final class _CPublicTransportDirectoryRouteInfo extends ffi.Struct {
   external _CDgisObjectId id;
 
   external _CString name;
+
+  external _CPublicTransportRouteType routeType;
 
   external _COptional_uint32_t color;
 
@@ -9729,6 +9741,7 @@ extension _CPublicTransportDirectoryRouteInfoToDart on _CPublicTransportDirector
     return PublicTransportDirectoryRouteInfo(
       id: this.id._toDart(),
       name: this.name._toDart(),
+      routeType: this.routeType._toDart(),
       color: this.color._toDart(),
       fromToStationNames: this.fromToStationNames._toDart(),
       directions: this.directions._toDart()
@@ -9741,6 +9754,7 @@ extension _DartTo_CPublicTransportDirectoryRouteInfo on PublicTransportDirectory
     final res = _CPublicTransportDirectoryRouteInfoMakeDefault();
     res.id = this.id._copyFromDartTo_CDgisObjectId();
     res.name = this.name._copyFromDartTo_CString();
+    res.routeType = this.routeType._copyFromDartTo_CPublicTransportRouteType();
     res.color = this.color._copyFromDartTo_COptional_uint32_t();
     res.fromToStationNames = this.fromToStationNames._copyFromDartTo_COptional_CPublicTransportDirectoryRouteDirectionNamesInfo();
     res.directions = this.directions._copyFromDartTo_CArray_CPublicTransportRouteDirection();
@@ -44674,6 +44688,9 @@ late final _CPublicTransportDirectoryRouteDirectionNamesInfoMakeDefaultPtr = _lo
 late final _CPublicTransportDirectoryRouteDirectionNamesInfoMakeDefault = _CPublicTransportDirectoryRouteDirectionNamesInfoMakeDefaultPtr.asFunction<_CPublicTransportDirectoryRouteDirectionNamesInfo Function()>();
 
 
+late final _CPublicTransportRouteTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPublicTransportRouteType Function()>>('CPublicTransportRouteTypeMakeDefault');
+late final _CPublicTransportRouteTypeMakeDefault = _CPublicTransportRouteTypeMakeDefaultPtr.asFunction<_CPublicTransportRouteType Function()>();
+
 late final _CPublicTransportRouteDirectionIdMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPublicTransportRouteDirectionId Function()>>('CPublicTransportRouteDirectionIdMakeDefault');
 late final _CPublicTransportRouteDirectionIdMakeDefault = _CPublicTransportRouteDirectionIdMakeDefaultPtr.asFunction<_CPublicTransportRouteDirectionId Function()>();
 
@@ -44703,9 +44720,6 @@ late final _COptional_CGeoPointMakeDefault = _COptional_CGeoPointMakeDefaultPtr.
 late final _CPublicTransportRouteGeometryMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPublicTransportRouteGeometry Function()>>('CPublicTransportRouteGeometryMakeDefault');
 late final _CPublicTransportRouteGeometryMakeDefault = _CPublicTransportRouteGeometryMakeDefaultPtr.asFunction<_CPublicTransportRouteGeometry Function()>();
 
-
-late final _CPublicTransportRouteTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPublicTransportRouteType Function()>>('CPublicTransportRouteTypeMakeDefault');
-late final _CPublicTransportRouteTypeMakeDefault = _CPublicTransportRouteTypeMakeDefaultPtr.asFunction<_CPublicTransportRouteType Function()>();
 
 late final _COptional_uint32_tMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_uint32_t Function()>>('COptional_uint32_tMakeDefault');
 late final _COptional_uint32_tMakeDefault = _COptional_uint32_tMakeDefaultPtr.asFunction<_COptional_uint32_t Function()>();

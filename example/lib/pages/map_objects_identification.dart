@@ -463,7 +463,9 @@ class _MapObjectsIdentificationState
       sdk.CircleOptions(
         position: circlePosition,
         radius: const sdk.Meter(5000),
+        // ignore: deprecated_member_use
         color: sdk.Color(Colors.red.value),
+        // ignore: deprecated_member_use
         strokeColor: sdk.Color(Colors.blue.value),
         strokeWidth: const sdk.LogicalPixel(1),
         userData: 'Userdata',
