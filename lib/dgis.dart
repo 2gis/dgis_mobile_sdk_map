@@ -33,6 +33,7 @@ export 'src/platform/map/map_options.dart';
 export 'src/platform/map/map_theme.dart';
 export 'src/platform/map/model_loader.dart';
 export 'src/platform/map/touch_events_observer.dart';
+export 'src/util/stateful_channel_listenable.dart';
 export 'src/widgets/common/rounded_corners.dart';
 export 'src/widgets/directory/search.dart'
     show DgisSearchWidget, SearchResultBuilder;
@@ -43,6 +44,7 @@ export 'src/widgets/map/compass_widget.dart';
 export 'src/widgets/map/indoor_widget.dart';
 export 'src/widgets/map/map_widget.dart' show MapWidget, MapWidgetController;
 export 'src/widgets/map/map_widget_color_scheme.dart';
+export 'src/widgets/map/mini_map_widget.dart' show MiniMapWidget;
 export 'src/widgets/map/my_location_widget.dart';
 export 'src/widgets/map/themed_map_controlling_widget.dart';
 export 'src/widgets/map/themed_map_controlling_widget_state.dart';
