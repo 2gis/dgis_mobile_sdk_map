@@ -1,6 +1,7 @@
 import 'pages/add_objects.dart';
 import 'pages/all_map_widgets.dart';
 import 'pages/benchmark.dart';
+import 'pages/benchmark_with_isolates.dart';
 import 'pages/calc_position.dart';
 import 'pages/camera_moves.dart';
 import 'pages/clustering.dart';
@@ -102,6 +103,17 @@ class _MyHomePageState extends State<MyHomePage> {
               context,
               MaterialPageRoute(
                   builder: (context) => BenchmarkPage(title: 'Benchmark')),
+            );
+          },
+        ),
+        ListTile(
+          title: buildPageTitle('Benchmark with Isolates'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => BenchmarkWithIsolatesPage(
+                      title: 'Benchmark with Isolates')),
             );
           },
         ),
