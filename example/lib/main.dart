@@ -1,4 +1,5 @@
 import 'pages/add_objects.dart';
+import 'pages/all_map_modern_widgets.dart';
 import 'pages/all_map_widgets.dart';
 import 'pages/benchmark.dart';
 import 'pages/benchmark_with_isolates.dart';
@@ -82,6 +83,17 @@ class _MyHomePageState extends State<MyHomePage> {
               context,
               MaterialPageRoute(
                   builder: (context) => AddObjectsPage(title: 'Add Objects')),
+            );
+          },
+        ),
+        ListTile(
+          title: buildPageTitle('All Map Modern Controls'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => AllMapModernWidgetsPage(
+                      title: 'All Map Modern Controls')),
             );
           },
         ),
