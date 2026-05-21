@@ -11282,6 +11282,10 @@ class PolylineGeometry extends Geometry implements ffi.Finalizable {
     res._releaseIntermediate();
     return t;
   }
+  Elevation? get elevation {
+    _COptional_CElevation res = _CPolylineGeometry_elevation(_CPolylineGeometryMakeDefault().._impl=_self);
+    return res._toDart();
+  }
 
   static final _finalizer = ffi.NativeFinalizer(_CPolylineGeometry_releasePtr);
 
@@ -11458,6 +11462,42 @@ extension _CPublicTransportRouteGeometryRelease on _CPublicTransportRouteGeometr
   }
 }
 
+// MARK: - Elevation? <-> _COptional_CElevation
+
+final class _COptional_CElevation extends ffi.Struct {
+  
+  external _CElevation value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CElevationBasicFunctions on _COptional_CElevation {
+  void _releaseIntermediate() {
+    
+  }
+}
+
+extension _COptional_CElevationToDart on _COptional_CElevation {
+  Elevation? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CElevation on Elevation? {
+  _COptional_CElevation _copyFromDartTo_COptional_CElevation() {
+    final cOptional = _COptional_CElevationMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CElevation();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
 // MARK: - PublicTransportPlatformTransition
 
 /** Справочная информация о маршруте общественного транспорта, на который можно пересесть на остановочной платформе. */
@@ -19497,6 +19537,11 @@ class SearchQueryBuilder implements ffi.Finalizable {
     return SearchQueryBuilder._create(ptr);
   }
 
+  factory SearchQueryBuilder() {
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_C_create();
+    return SearchQueryBuilder._create(res._impl);
+  }
+
   @override
   bool operator ==(Object other) =>
     identical(this, other) || other is SearchQueryBuilder &&
@@ -19589,8 +19634,9 @@ class SearchQueryBuilder implements ffi.Finalizable {
   }
 
   /**
-   Начать построение поискового запроса c указанным центром области поиска. Радиус по умолчанию равен 250.
-   Конфликтует с методом set_spatial_restriction.
+   Начать построение поискового запроса со строгим ограничением в указанном центре области поиска.
+   Радиус по умолчанию равен 250.
+   Конфликтует с методоми set_spatial_restriction и set_restriction_geometry.
    Работает только с онлайн поиском.
   */
   static SearchQueryBuilder fromGeoPoint(
@@ -19605,10 +19651,56 @@ class SearchQueryBuilder implements ffi.Finalizable {
 
   // MARK: SearchQueryBuilder: Methods
 
+  /** Задать текст поискового запроса. */
+  SearchQueryBuilder setQueryText(
+    String? queryText
+  )  {
+    var _a1 = queryText._copyFromDartTo_COptional_CString();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setQueryText_COptional_CString(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /** Задать идентификаторы рубрик. */
+  SearchQueryBuilder setRubricIds(
+    List<RubricId> rubricIds
+  )  {
+    var _a1 = rubricIds._copyFromDartTo_CArray_CRubricId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setRubricIds_CArray_CRubricId(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /** Задать фильтр по идентификатору организации, к которой относится компания. */
+  SearchQueryBuilder setOrgId(
+    OrgId? orgId
+  )  {
+    var _a1 = orgId._copyFromDartTo_COptional_COrgId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setOrgId_COptional_COrgId(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /** Задать идентификатор здания для фильтрации объектов в здании. */
+  SearchQueryBuilder setBuildingId(
+    BuildingId? buildingId
+  )  {
+    var _a1 = buildingId._copyFromDartTo_COptional_CBuildingId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setBuildingId_COptional_CBuildingId(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
   /**
-   Задать ограничение области поиска в форме полигона.
-   Первая и последняя точки полигона не обязаны совпадать.
-   Конфликтует с методоми set_geo_point и from_geo_point.
+   Задать строгое ограничение области поиска в форме контура полигона.
+   Первая и последняя точки контура не обязаны совпадать.
+   Конфликтует с методоми set_restriction_geometry, set_geo_point и from_geo_point.
   
    - Note: по умолчанию ограничение отсутствует.
   */
@@ -19624,6 +19716,28 @@ class SearchQueryBuilder implements ffi.Finalizable {
   }
 
   /**
+   Задать строгое ограничение области поиска геометрией.
+   Конфликтует с методоми set_spatial_restriction, set_geo_point и from_geo_point.
+   Для GeometryKind.Point будет выставлен set_geo_point.
+   GeometryKind.Polyline и GeometryKind.Polygon будут установлены как полигоны.
+   Геометрия типа GeometryKind.Complex будет установлена как мулитиполигон.
+   Для GeometryKind.Point внутри GeometryKind.Complex геометрия будет
+   преобразована в контур полигона с радиусом из set_radius.
+  
+   - Note: по умолчанию ограничение отсутствует.
+  */
+  SearchQueryBuilder setRestrictionGeometry(
+    Geometry? restrictionGeometry
+  )  {
+    var _a1 = restrictionGeometry._copyFromDartTo_COptional_CGeometry();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometry(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
    Задать прямоугольную область интереса в географических координатах.
    Типичным значением является visible_rect из ICamera - объемлющий прямоугольник области просмотра.
   */
@@ -19632,6 +19746,22 @@ class SearchQueryBuilder implements ffi.Finalizable {
   )  {
     var _a1 = rect._copyFromDartTo_COptional_CGeoRect();
     _CSearchQueryBuilder res = _CSearchQueryBuilder_setAreaOfInterest_COptional_CGeoRect(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
+   Задать слабое ограничение области поиска: штраф за непопадание вместо строгого отбрасывания.
+   Работает только с онлайн поиском.
+   Будет проигнорировано при выставленном строгом ограничении поиска.
+  */
+  SearchQueryBuilder setTerritoryOfInterest(
+    Geometry? territoryOfInterest
+  )  {
+    var _a1 = territoryOfInterest._copyFromDartTo_COptional_CGeometry();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setTerritoryOfInterest_COptional_CGeometry(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
     final t = res._toDart();
     res._releaseIntermediate();
     return t;
@@ -19692,7 +19822,7 @@ class SearchQueryBuilder implements ffi.Finalizable {
   }
 
   /**
-   Задать центр для поискового запроса. Радиус по умолчанию равен 250 метров.
+   Задать центр строгого ограничения для поискового запроса. Радиус по умолчанию равен 250 метров.
    Конфликтует с методом set_spatial_restriction.
   */
   SearchQueryBuilder setGeoPoint(
@@ -19708,6 +19838,7 @@ class SearchQueryBuilder implements ffi.Finalizable {
   /**
    Задать радиус поиска в метрах.
    Работает в сочетании с установленным geo_point.
+   Радиус по умолчанию равен 250 метров.
    Для поискового запроса в точке ограничение от 0 до 2000.
    Для остальных запросов ограничение от 0 до 50000.
   */
@@ -19789,6 +19920,42 @@ extension _CSearchQueryBuilderToDart on _CSearchQueryBuilder {
 extension _DartToCSearchQueryBuilder on SearchQueryBuilder {
   _CSearchQueryBuilder _copyFromDartTo_CSearchQueryBuilder() {
     return (_CSearchQueryBuilderMakeDefault().._impl=_self)._retain();
+  }
+}
+// MARK: - OrgId? <-> _COptional_COrgId
+
+final class _COptional_COrgId extends ffi.Struct {
+  
+  external _COrgId value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_COrgIdBasicFunctions on _COptional_COrgId {
+  void _releaseIntermediate() {
+    
+  }
+}
+
+extension _COptional_COrgIdToDart on _COptional_COrgId {
+  OrgId? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_COrgId on OrgId? {
+  _COptional_COrgId _copyFromDartTo_COptional_COrgId() {
+    final cOptional = _COptional_COrgIdMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_COrgId();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
   }
 }
 // MARK: - List<GeoPoint>? <-> _COptional_CArray_CGeoPoint
@@ -19964,8 +20131,9 @@ class SuggestQueryBuilder implements ffi.Finalizable {
   // MARK: SuggestQueryBuilder: Methods
 
   /**
-   Задать ограничение области поиска в форме полигона.
-   Первая и последняя точки полигона не обязаны совпадать.
+   Задать строгое ограничение области поиска в форме контура полигона.
+   Первая и последняя точки контура не обязаны совпадать.
+   Конфликтует с методом set_restriction_geometry.
   
    - Note: по умолчанию ограничение отсутствует
   */
@@ -19974,6 +20142,39 @@ class SuggestQueryBuilder implements ffi.Finalizable {
   )  {
     var _a1 = spatialRestriction._copyFromDartTo_COptional_CArray_CGeoPoint();
     _CSuggestQueryBuilder res = _CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint(_CSuggestQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
+   Задать строгое ограничение области поиска геометрией.
+   Конфликтует с методом set_spatial_restriction.
+  
+   - Note: по умолчанию ограничение отсутствует.
+  */
+  SuggestQueryBuilder setRestrictionGeometry(
+    Geometry? restrictionGeometry
+  )  {
+    var _a1 = restrictionGeometry._copyFromDartTo_COptional_CGeometry();
+    _CSuggestQueryBuilder res = _CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometry(_CSuggestQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
+   Задать слабое ограничение области поиска: штраф за непопадание вместо строгого отбрасывания.
+   Работает только с онлайн поиском.
+   Будет проигнорировано при выставленном строгом ограничении поиска.
+  */
+  SuggestQueryBuilder setTerritoryOfInterest(
+    Geometry? territoryOfInterest
+  )  {
+    var _a1 = territoryOfInterest._copyFromDartTo_COptional_CGeometry();
+    _CSuggestQueryBuilder res = _CSuggestQueryBuilder_setTerritoryOfInterest_COptional_CGeometry(_CSuggestQueryBuilderMakeDefault().._impl=_self, _a1);
     _a1._releaseIntermediate();
     final t = res._toDart();
     res._releaseIntermediate();
@@ -21458,10 +21659,24 @@ class PackedSearchQuery implements ffi.Finalizable {
     res._releaseIntermediate();
     return t;
   }
+  /** Геометрия, ограничивающая область поиска. */
+  Geometry? get geometryRestriction {
+    _COptional_CGeometry res = _CPackedSearchQuery_geometryRestriction(_CPackedSearchQueryMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
   /** Прямоугольная область интереса. */
   GeoRect? get areaOfInterest {
     _COptional_CGeoRect res = _CPackedSearchQuery_areaOfInterest(_CPackedSearchQueryMakeDefault().._impl=_self);
     return res._toDart();
+  }
+  /** Слабое ограничение области поиска объектов: штраф за непопадание вместо строгого отбрасывания. */
+  Geometry? get territoryOfInterest {
+    _COptional_CGeometry res = _CPackedSearchQuery_territoryOfInterest(_CPackedSearchQueryMakeDefault().._impl=_self);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
   }
   /** Ограничение по возвращаемым поиском типам объектов. */
   List<ObjectType> get allowedResultTypes {
@@ -21700,42 +21915,6 @@ extension _DartTo_CData on ByteData {
   }
 }
 	
-// MARK: - OrgId? <-> _COptional_COrgId
-
-final class _COptional_COrgId extends ffi.Struct {
-  
-  external _COrgId value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_COrgIdBasicFunctions on _COptional_COrgId {
-  void _releaseIntermediate() {
-    
-  }
-}
-
-extension _COptional_COrgIdToDart on _COptional_COrgId {
-  OrgId? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_COrgId on OrgId? {
-  _COptional_COrgId _copyFromDartTo_COptional_COrgId() {
-    final cOptional = _COptional_COrgIdMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_COrgId();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
 // MARK: - PointGeometryData
 
 /** Данные геометрии точечного объекта. */
@@ -21921,6 +22100,10 @@ class PolygonGeometry extends Geometry implements ffi.Finalizable {
     final t = res._toDart();
     res._releaseIntermediate();
     return t;
+  }
+  Elevation? get elevation {
+    _COptional_CElevation res = _CPolygonGeometry_elevation(_CPolygonGeometryMakeDefault().._impl=_self);
+    return res._toDart();
   }
 
   static final _finalizer = ffi.NativeFinalizer(_CPolygonGeometry_releasePtr);
@@ -41060,6 +41243,72 @@ extension _CResult_CCircleToDart on _CResult_CCircle {
   }
 }
 	
+// MARK: - DashedPolygonOptions
+
+/** Параметры пунктирного контура полигона. */
+class DashedPolygonOptions {
+  /** Длина пунктира. */
+  final LogicalPixel dashLength;
+  /** Длина межпунктирного расстояния. */
+  final LogicalPixel dashSpaceLength;
+
+  const DashedPolygonOptions({
+    this.dashLength = const LogicalPixel(5),
+    this.dashSpaceLength = const LogicalPixel(2)
+  });
+
+  DashedPolygonOptions copyWith({
+    LogicalPixel? dashLength,
+    LogicalPixel? dashSpaceLength
+  }) {
+    return DashedPolygonOptions(
+      dashLength: dashLength ?? this.dashLength,
+      dashSpaceLength: dashSpaceLength ?? this.dashSpaceLength
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is DashedPolygonOptions &&
+    other.runtimeType == runtimeType &&
+    other.dashLength == dashLength &&
+    other.dashSpaceLength == dashSpaceLength;
+
+  @override
+  int get hashCode {
+    return Object.hash(dashLength, dashSpaceLength);
+  }
+
+}
+final class _CDashedPolygonOptions extends ffi.Struct {
+  external _CLogicalPixel dashLength;
+
+  external _CLogicalPixel dashSpaceLength;
+
+}
+// MARK: - DashedPolygonOptions <-> _CDashedPolygonOptions
+
+extension _CDashedPolygonOptionsToDart on _CDashedPolygonOptions {
+  DashedPolygonOptions _toDart() {
+    return DashedPolygonOptions(
+      dashLength: this.dashLength._toDart(),
+      dashSpaceLength: this.dashSpaceLength._toDart()
+    );
+  }
+}
+
+extension _DartTo_CDashedPolygonOptions on DashedPolygonOptions {
+  _CDashedPolygonOptions _copyFromDartTo_CDashedPolygonOptions() {
+    final res = _CDashedPolygonOptionsMakeDefault();
+    res.dashLength = this.dashLength._copyFromDartTo_CLogicalPixel();
+    res.dashSpaceLength = this.dashSpaceLength._copyFromDartTo_CLogicalPixel();
+    return res;
+  }
+}
+extension _CDashedPolygonOptionsRelease on _CDashedPolygonOptions {
+  void _releaseIntermediate() {
+  }
+}
+
 // MARK: - Polygon
 
 /** Полигон на карте. */
@@ -41103,6 +41352,29 @@ class Polygon extends SimpleMapObject implements ffi.Finalizable {
     void res = _CPolygon_setStrokeColor_CColor(_CPolygonMakeDefault().._impl=_self, _a1);
     return res;
   }
+  /**
+   Получение параметров пунктирного контура полигона.
+  
+   - Returns: параметры пунктира или null, если линия не является пунктирной
+  */
+  DashedPolygonOptions? get dashedPolygonOptions {
+    _COptional_CDashedPolygonOptions res = _CPolygon_dashedPolygonOptions(_CPolygonMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  set dashedPolygonOptions(DashedPolygonOptions? options) {
+    var _a1 = options._copyFromDartTo_COptional_CDashedPolygonOptions();
+    void res = _CPolygon_setDashedPolygonOptions_COptional_CDashedPolygonOptions(_CPolygonMakeDefault().._impl=_self, _a1);
+    return res;
+  }
+  Elevation? get elevation {
+    _COptional_CElevation res = _CPolygon_elevation(_CPolygonMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  set elevation(Elevation? elevation) {
+    var _a1 = elevation._copyFromDartTo_COptional_CElevation();
+    void res = _CPolygon_setElevation_COptional_CElevation(_CPolygonMakeDefault().._impl=_self, _a1);
+    return res;
+  }
 
   static final _finalizer = ffi.NativeFinalizer(_CPolygon_releasePtr);
 
@@ -41119,7 +41391,7 @@ class Polygon extends SimpleMapObject implements ffi.Finalizable {
   }
 
   /**
-   Cоздание полигона на основе параметров.
+   Создание полигона на основе параметров.
   
    - Throws: Exception В случае, если один из контуров содержит меньше трех точек.
   */
@@ -41181,6 +41453,42 @@ extension _DartToCPolygon on Polygon {
     return (_CPolygonMakeDefault().._impl=_self)._retain();
   }
 }
+// MARK: - DashedPolygonOptions? <-> _COptional_CDashedPolygonOptions
+
+final class _COptional_CDashedPolygonOptions extends ffi.Struct {
+  
+  external _CDashedPolygonOptions value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CDashedPolygonOptionsBasicFunctions on _COptional_CDashedPolygonOptions {
+  void _releaseIntermediate() {
+    
+  }
+}
+
+extension _COptional_CDashedPolygonOptionsToDart on _COptional_CDashedPolygonOptions {
+  DashedPolygonOptions? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CDashedPolygonOptions on DashedPolygonOptions? {
+  _COptional_CDashedPolygonOptions _copyFromDartTo_COptional_CDashedPolygonOptions() {
+    final cOptional = _COptional_CDashedPolygonOptionsMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CDashedPolygonOptions();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
 // MARK: - PolygonOptions
 
 /** Параметры полигона. */
@@ -41189,22 +41497,28 @@ class PolygonOptions {
   final Color color;
   final LogicalPixel strokeWidth;
   final Color strokeColor;
+  /** Параметры пунктирного контура полигона. */
+  final DashedPolygonOptions? dashedPolygonOptions;
   final bool visible;
   final Object? userData;
   /** Уровень отрисовки объекта. */
   final ZIndex zIndex;
   /** Привязка к поэтажному плану здания. */
   final LevelId? levelId;
+  /** Высота полигона над поверхностью в метрах. */
+  final Elevation? elevation;
 
   const PolygonOptions({
     required this.contours,
     this.color = const Color(),
     this.strokeWidth = const LogicalPixel(0),
     this.strokeColor = const Color(),
+    this.dashedPolygonOptions = null,
     this.visible = true,
     this.userData = const {},
     this.zIndex = const ZIndex(0),
-    this.levelId = null
+    this.levelId = null,
+    this.elevation = null
   });
 
   PolygonOptions copyWith({
@@ -41212,20 +41526,24 @@ class PolygonOptions {
     Color? color,
     LogicalPixel? strokeWidth,
     Color? strokeColor,
+    Optional<DashedPolygonOptions?>? dashedPolygonOptions,
     bool? visible,
     Optional<Object?>? userData,
     ZIndex? zIndex,
-    Optional<LevelId?>? levelId
+    Optional<LevelId?>? levelId,
+    Optional<Elevation?>? elevation
   }) {
     return PolygonOptions(
       contours: contours ?? this.contours,
       color: color ?? this.color,
       strokeWidth: strokeWidth ?? this.strokeWidth,
       strokeColor: strokeColor ?? this.strokeColor,
+      dashedPolygonOptions: dashedPolygonOptions != null ? dashedPolygonOptions.value : this.dashedPolygonOptions,
       visible: visible ?? this.visible,
       userData: userData != null ? userData.value : this.userData,
       zIndex: zIndex ?? this.zIndex,
-      levelId: levelId != null ? levelId.value : this.levelId
+      levelId: levelId != null ? levelId.value : this.levelId,
+      elevation: elevation != null ? elevation.value : this.elevation
     );
   }
   @override
@@ -41236,14 +41554,16 @@ class PolygonOptions {
     other.color == color &&
     other.strokeWidth == strokeWidth &&
     other.strokeColor == strokeColor &&
+    other.dashedPolygonOptions == dashedPolygonOptions &&
     other.visible == visible &&
     other.userData == userData &&
     other.zIndex == zIndex &&
-    other.levelId == levelId;
+    other.levelId == levelId &&
+    other.elevation == elevation;
 
   @override
   int get hashCode {
-    return Object.hash(contours, color, strokeWidth, strokeColor, visible, userData, zIndex, levelId);
+    return Object.hash(contours, color, strokeWidth, strokeColor, dashedPolygonOptions, visible, userData, zIndex, levelId, elevation);
   }
 
 }
@@ -41256,6 +41576,8 @@ final class _CPolygonOptions extends ffi.Struct {
 
   external _CColor strokeColor;
 
+  external _COptional_CDashedPolygonOptions dashedPolygonOptions;
+
   @ffi.Bool()
   external bool visible;
 
@@ -41264,6 +41586,8 @@ final class _CPolygonOptions extends ffi.Struct {
   external _CZIndex zIndex;
 
   external _COptional_CLevelId levelId;
+
+  external _COptional_CElevation elevation;
 
 }
 // MARK: - PolygonOptions <-> _CPolygonOptions
@@ -41275,10 +41599,12 @@ extension _CPolygonOptionsToDart on _CPolygonOptions {
       color: this.color._toDart(),
       strokeWidth: this.strokeWidth._toDart(),
       strokeColor: this.strokeColor._toDart(),
+      dashedPolygonOptions: this.dashedPolygonOptions._toDart(),
       visible: this.visible,
       userData: this.userData._toDart(),
       zIndex: this.zIndex._toDart(),
-      levelId: this.levelId._toDart()
+      levelId: this.levelId._toDart(),
+      elevation: this.elevation._toDart()
     );
   }
 }
@@ -41290,10 +41616,12 @@ extension _DartTo_CPolygonOptions on PolygonOptions {
     res.color = this.color._copyFromDartTo_CColor();
     res.strokeWidth = this.strokeWidth._copyFromDartTo_CLogicalPixel();
     res.strokeColor = this.strokeColor._copyFromDartTo_CColor();
+    res.dashedPolygonOptions = this.dashedPolygonOptions._copyFromDartTo_COptional_CDashedPolygonOptions();
     res.visible = this.visible;
     res.userData = this.userData._copyFromDartTo_CAny();
     res.zIndex = this.zIndex._copyFromDartTo_CZIndex();
     res.levelId = this.levelId._copyFromDartTo_COptional_CLevelId();
+    res.elevation = this.elevation._copyFromDartTo_COptional_CElevation();
     return res;
   }
 }
@@ -41645,6 +41973,15 @@ class Polyline extends SimpleMapObject implements ffi.Finalizable {
     _a1._releaseIntermediate();
     return res;
   }
+  Elevation? get elevation {
+    _COptional_CElevation res = _CPolyline_elevation(_CPolylineMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  set elevation(Elevation? elevation) {
+    var _a1 = elevation._copyFromDartTo_COptional_CElevation();
+    void res = _CPolyline_setElevation_COptional_CElevation(_CPolylineMakeDefault().._impl=_self, _a1);
+    return res;
+  }
 
   static final _finalizer = ffi.NativeFinalizer(_CPolyline_releasePtr);
 
@@ -41828,6 +42165,8 @@ class PolylineOptions {
   final ZIndex zIndex;
   /** Привязка к поэтажному плану здания. */
   final LevelId? levelId;
+  /** Высота полилинии над поверхностью в метрах. */
+  final Elevation? elevation;
 
   const PolylineOptions({
     required this.points,
@@ -41839,7 +42178,8 @@ class PolylineOptions {
     this.visible = true,
     this.userData = const {},
     this.zIndex = const ZIndex(0),
-    this.levelId = null
+    this.levelId = null,
+    this.elevation = null
   });
 
   PolylineOptions copyWith({
@@ -41852,7 +42192,8 @@ class PolylineOptions {
     bool? visible,
     Optional<Object?>? userData,
     ZIndex? zIndex,
-    Optional<LevelId?>? levelId
+    Optional<LevelId?>? levelId,
+    Optional<Elevation?>? elevation
   }) {
     return PolylineOptions(
       points: points ?? this.points,
@@ -41864,7 +42205,8 @@ class PolylineOptions {
       visible: visible ?? this.visible,
       userData: userData != null ? userData.value : this.userData,
       zIndex: zIndex ?? this.zIndex,
-      levelId: levelId != null ? levelId.value : this.levelId
+      levelId: levelId != null ? levelId.value : this.levelId,
+      elevation: elevation != null ? elevation.value : this.elevation
     );
   }
   @override
@@ -41880,11 +42222,12 @@ class PolylineOptions {
     other.visible == visible &&
     other.userData == userData &&
     other.zIndex == zIndex &&
-    other.levelId == levelId;
+    other.levelId == levelId &&
+    other.elevation == elevation;
 
   @override
   int get hashCode {
-    return Object.hash(points, width, color, erasedPart, dashedPolylineOptions, gradientPolylineOptions, visible, userData, zIndex, levelId);
+    return Object.hash(points, width, color, erasedPart, dashedPolylineOptions, gradientPolylineOptions, visible, userData, zIndex, levelId, elevation);
   }
 
 }
@@ -41911,6 +42254,8 @@ final class _CPolylineOptions extends ffi.Struct {
 
   external _COptional_CLevelId levelId;
 
+  external _COptional_CElevation elevation;
+
 }
 // MARK: - PolylineOptions <-> _CPolylineOptions
 
@@ -41926,7 +42271,8 @@ extension _CPolylineOptionsToDart on _CPolylineOptions {
       visible: this.visible,
       userData: this.userData._toDart(),
       zIndex: this.zIndex._toDart(),
-      levelId: this.levelId._toDart()
+      levelId: this.levelId._toDart(),
+      elevation: this.elevation._toDart()
     );
   }
 }
@@ -41944,6 +42290,7 @@ extension _DartTo_CPolylineOptions on PolylineOptions {
     res.userData = this.userData._copyFromDartTo_CAny();
     res.zIndex = this.zIndex._copyFromDartTo_CZIndex();
     res.levelId = this.levelId._copyFromDartTo_COptional_CLevelId();
+    res.elevation = this.elevation._copyFromDartTo_COptional_CElevation();
     return res;
   }
 }
@@ -45167,7 +45514,7 @@ extension _CCommonRecognizeSettingsRelease on _CCommonRecognizeSettings {
 class CommonGestureSettings implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  /** Общие настройки распознования жестов. */
+  /** Общие настройки распознавания жестов. */
   CommonRecognizeSettings get recognizeSettings {
     _CCommonRecognizeSettings res = _CCommonGestureSettings_recognizeSettings(_CCommonGestureSettingsMakeDefault().._impl=_self);
     return res._toDart();
@@ -50508,6 +50855,8 @@ late final _CPublicTransportRouteDirectionTypeMakeDefaultPtr = _lookup<ffi.Nativ
 late final _CPublicTransportRouteDirectionTypeMakeDefault = _CPublicTransportRouteDirectionTypeMakeDefaultPtr.asFunction<_CPublicTransportRouteDirectionType Function()>();
 late final _CPolylineGeometry_pointsPtr = _lookup<ffi.NativeFunction<_CArray_CGeoPoint Function(_CPolylineGeometry)>>('CPolylineGeometry_points');
 late final _CPolylineGeometry_points = _CPolylineGeometry_pointsPtr.asFunction<_CArray_CGeoPoint Function(_CPolylineGeometry)>();
+late final _CPolylineGeometry_elevationPtr = _lookup<ffi.NativeFunction<_COptional_CElevation Function(_CPolylineGeometry)>>('CPolylineGeometry_elevation');
+late final _CPolylineGeometry_elevation = _CPolylineGeometry_elevationPtr.asFunction<_COptional_CElevation Function(_CPolylineGeometry)>();
 
 late final _CPolylineGeometry_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CPolylineGeometry_cg_objectIdentifier');
 late final _CPolylineGeometry_cg_objectIdentifier = _CPolylineGeometry_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -50529,6 +50878,9 @@ late final _COptional_CGeoPointMakeDefault = _COptional_CGeoPointMakeDefaultPtr.
 late final _CPublicTransportRouteGeometryMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPublicTransportRouteGeometry Function()>>('CPublicTransportRouteGeometryMakeDefault');
 late final _CPublicTransportRouteGeometryMakeDefault = _CPublicTransportRouteGeometryMakeDefaultPtr.asFunction<_CPublicTransportRouteGeometry Function()>();
 
+
+late final _COptional_CElevationMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CElevation Function()>>('COptional_CElevationMakeDefault');
+late final _COptional_CElevationMakeDefault = _COptional_CElevationMakeDefaultPtr.asFunction<_COptional_CElevation Function()>();
 
 late final _CPublicTransportPlatformTransitionMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPublicTransportPlatformTransition Function()>>('CPublicTransportPlatformTransitionMakeDefault');
 late final _CPublicTransportPlatformTransitionMakeDefault = _CPublicTransportPlatformTransitionMakeDefaultPtr.asFunction<_CPublicTransportPlatformTransition Function()>();
@@ -51866,10 +52218,22 @@ late final _CSearchQueryBuilder_S_fromBuildingId_CBuildingIdPtr = _lookup<ffi.Na
 late final _CSearchQueryBuilder_S_fromBuildingId_CBuildingId = _CSearchQueryBuilder_S_fromBuildingId_CBuildingIdPtr.asFunction<_CSearchQueryBuilder Function(_CBuildingId)>();
 late final _CSearchQueryBuilder_S_fromGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CGeoPoint)>>('CSearchQueryBuilder_S_fromGeoPoint_CGeoPoint');
 late final _CSearchQueryBuilder_S_fromGeoPoint_CGeoPoint = _CSearchQueryBuilder_S_fromGeoPoint_CGeoPointPtr.asFunction<_CSearchQueryBuilder Function(_CGeoPoint)>();
+late final _CSearchQueryBuilder_setQueryText_COptional_CStringPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CString)>>('CSearchQueryBuilder_setQueryText_COptional_CString');
+late final _CSearchQueryBuilder_setQueryText_COptional_CString = _CSearchQueryBuilder_setQueryText_COptional_CStringPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CString)>();
+late final _CSearchQueryBuilder_setRubricIds_CArray_CRubricIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_CRubricId)>>('CSearchQueryBuilder_setRubricIds_CArray_CRubricId');
+late final _CSearchQueryBuilder_setRubricIds_CArray_CRubricId = _CSearchQueryBuilder_setRubricIds_CArray_CRubricIdPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_CRubricId)>();
+late final _CSearchQueryBuilder_setOrgId_COptional_COrgIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_COrgId)>>('CSearchQueryBuilder_setOrgId_COptional_COrgId');
+late final _CSearchQueryBuilder_setOrgId_COptional_COrgId = _CSearchQueryBuilder_setOrgId_COptional_COrgIdPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_COrgId)>();
+late final _CSearchQueryBuilder_setBuildingId_COptional_CBuildingIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CBuildingId)>>('CSearchQueryBuilder_setBuildingId_COptional_CBuildingId');
+late final _CSearchQueryBuilder_setBuildingId_COptional_CBuildingId = _CSearchQueryBuilder_setBuildingId_COptional_CBuildingIdPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CBuildingId)>();
 late final _CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPointPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CArray_CGeoPoint)>>('CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint');
 late final _CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint = _CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPointPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CArray_CGeoPoint)>();
+late final _CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometryPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeometry)>>('CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometry');
+late final _CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometry = _CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometryPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeometry)>();
 late final _CSearchQueryBuilder_setAreaOfInterest_COptional_CGeoRectPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeoRect)>>('CSearchQueryBuilder_setAreaOfInterest_COptional_CGeoRect');
 late final _CSearchQueryBuilder_setAreaOfInterest_COptional_CGeoRect = _CSearchQueryBuilder_setAreaOfInterest_COptional_CGeoRectPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeoRect)>();
+late final _CSearchQueryBuilder_setTerritoryOfInterest_COptional_CGeometryPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeometry)>>('CSearchQueryBuilder_setTerritoryOfInterest_COptional_CGeometry');
+late final _CSearchQueryBuilder_setTerritoryOfInterest_COptional_CGeometry = _CSearchQueryBuilder_setTerritoryOfInterest_COptional_CGeometryPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeometry)>();
 late final _CSearchQueryBuilder_setAllowedResultTypes_CArray_CObjectTypePtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_CObjectType)>>('CSearchQueryBuilder_setAllowedResultTypes_CArray_CObjectType');
 late final _CSearchQueryBuilder_setAllowedResultTypes_CArray_CObjectType = _CSearchQueryBuilder_setAllowedResultTypes_CArray_CObjectTypePtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_CObjectType)>();
 late final _CSearchQueryBuilder_setPageSize_int32_tPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, ffi.Int32)>>('CSearchQueryBuilder_setPageSize_int32_t');
@@ -51888,6 +52252,8 @@ late final _CSearchQueryBuilder_setSearchNearby_boolPtr = _lookup<ffi.NativeFunc
 late final _CSearchQueryBuilder_setSearchNearby_bool = _CSearchQueryBuilder_setSearchNearby_boolPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, bool)>();
 late final _CSearchQueryBuilder_buildPtr = _lookup<ffi.NativeFunction<_CSearchQuery Function(_CSearchQueryBuilder)>>('CSearchQueryBuilder_build');
 late final _CSearchQueryBuilder_build = _CSearchQueryBuilder_buildPtr.asFunction<_CSearchQuery Function(_CSearchQueryBuilder)>();
+late final _CSearchQueryBuilder_C_createPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function()>>('CSearchQueryBuilder_C_create');
+late final _CSearchQueryBuilder_C_create = _CSearchQueryBuilder_C_createPtr.asFunction<_CSearchQueryBuilder Function()>();
 
 late final _CSearchQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryBuilder_release');
 late final _CSearchQueryBuilder_release = _CSearchQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
@@ -51896,6 +52262,9 @@ late final _CSearchQueryBuilder_retain = _CSearchQueryBuilder_retainPtr.asFuncti
 late final _CSearchQueryBuilderMakeDefaultPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function()>>('CSearchQueryBuilderMakeDefault');
 late final _CSearchQueryBuilderMakeDefault = _CSearchQueryBuilderMakeDefaultPtr.asFunction<_CSearchQueryBuilder Function()>();
 
+
+late final _COptional_COrgIdMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_COrgId Function()>>('COptional_COrgIdMakeDefault');
+late final _COptional_COrgIdMakeDefault = _COptional_COrgIdMakeDefaultPtr.asFunction<_COptional_COrgId Function()>();
 
 late final _COptional_CArray_CGeoPointMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CArray_CGeoPoint Function()>>('COptional_CArray_CGeoPointMakeDefault');
 late final _COptional_CArray_CGeoPointMakeDefault = _COptional_CArray_CGeoPointMakeDefaultPtr.asFunction<_COptional_CArray_CGeoPoint Function()>();
@@ -51918,6 +52287,10 @@ late final _CSuggestQueryBuilder_S_fromQuery_CSuggestQueryPtr = _lookup<ffi.Nati
 late final _CSuggestQueryBuilder_S_fromQuery_CSuggestQuery = _CSuggestQueryBuilder_S_fromQuery_CSuggestQueryPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQuery)>();
 late final _CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPointPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CArray_CGeoPoint)>>('CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint');
 late final _CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint = _CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPointPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CArray_CGeoPoint)>();
+late final _CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometryPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeometry)>>('CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometry');
+late final _CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometry = _CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometryPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeometry)>();
+late final _CSuggestQueryBuilder_setTerritoryOfInterest_COptional_CGeometryPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeometry)>>('CSuggestQueryBuilder_setTerritoryOfInterest_COptional_CGeometry');
+late final _CSuggestQueryBuilder_setTerritoryOfInterest_COptional_CGeometry = _CSuggestQueryBuilder_setTerritoryOfInterest_COptional_CGeometryPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeometry)>();
 late final _CSuggestQueryBuilder_setAreaOfInterest_COptional_CGeoRectPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeoRect)>>('CSuggestQueryBuilder_setAreaOfInterest_COptional_CGeoRect');
 late final _CSuggestQueryBuilder_setAreaOfInterest_COptional_CGeoRect = _CSuggestQueryBuilder_setAreaOfInterest_COptional_CGeoRectPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeoRect)>();
 late final _CSuggestQueryBuilder_setAllowedResultTypes_CArray_CSuggestedTypePtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _CArray_CSuggestedType)>>('CSuggestQueryBuilder_setAllowedResultTypes_CArray_CSuggestedType');
@@ -52133,8 +52506,12 @@ late final _CPackedSearchQuery_buildingIdPtr = _lookup<ffi.NativeFunction<_COpti
 late final _CPackedSearchQuery_buildingId = _CPackedSearchQuery_buildingIdPtr.asFunction<_COptional_CBuildingId Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_spatialRestrictionPtr = _lookup<ffi.NativeFunction<_COptional_CArray_CGeoPoint Function(_CPackedSearchQuery)>>('CPackedSearchQuery_spatialRestriction');
 late final _CPackedSearchQuery_spatialRestriction = _CPackedSearchQuery_spatialRestrictionPtr.asFunction<_COptional_CArray_CGeoPoint Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_geometryRestrictionPtr = _lookup<ffi.NativeFunction<_COptional_CGeometry Function(_CPackedSearchQuery)>>('CPackedSearchQuery_geometryRestriction');
+late final _CPackedSearchQuery_geometryRestriction = _CPackedSearchQuery_geometryRestrictionPtr.asFunction<_COptional_CGeometry Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_areaOfInterestPtr = _lookup<ffi.NativeFunction<_COptional_CGeoRect Function(_CPackedSearchQuery)>>('CPackedSearchQuery_areaOfInterest');
 late final _CPackedSearchQuery_areaOfInterest = _CPackedSearchQuery_areaOfInterestPtr.asFunction<_COptional_CGeoRect Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_territoryOfInterestPtr = _lookup<ffi.NativeFunction<_COptional_CGeometry Function(_CPackedSearchQuery)>>('CPackedSearchQuery_territoryOfInterest');
+late final _CPackedSearchQuery_territoryOfInterest = _CPackedSearchQuery_territoryOfInterestPtr.asFunction<_COptional_CGeometry Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_allowedResultTypesPtr = _lookup<ffi.NativeFunction<_CArray_CObjectType Function(_CPackedSearchQuery)>>('CPackedSearchQuery_allowedResultTypes');
 late final _CPackedSearchQuery_allowedResultTypes = _CPackedSearchQuery_allowedResultTypesPtr.asFunction<_CArray_CObjectType Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_pageSizePtr = _lookup<ffi.NativeFunction<ffi.Int32 Function(_CPackedSearchQuery)>>('CPackedSearchQuery_pageSize');
@@ -52184,9 +52561,6 @@ late final _GetDataWith_CData = _GetDataWith_CDataPtr.asFunction<ffi.Pointer<ffi
 late final _CData_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CData)>>('CData_release');
 late final _CData_release = _CData_releasePtr.asFunction<void Function(_CData)>();
 
-late final _COptional_COrgIdMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_COrgId Function()>>('COptional_COrgIdMakeDefault');
-late final _COptional_COrgIdMakeDefault = _COptional_COrgIdMakeDefaultPtr.asFunction<_COptional_COrgId Function()>();
-
 late final _CPointGeometryData_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPointGeometryData)>>('CPointGeometryData_release');
 late final _CPointGeometryData_release = _CPointGeometryData_releasePtr.asFunction<void Function(_CPointGeometryData)>();
 late final _CPointGeometryDataMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPointGeometryData Function()>>('CPointGeometryDataMakeDefault');
@@ -52211,6 +52585,8 @@ late final _CPointGeometryMakeDefault = _CPointGeometryMakeDefaultPtr.asFunction
 
 late final _CPolygonGeometry_contoursPtr = _lookup<ffi.NativeFunction<_CArray_CArray_CGeoPoint Function(_CPolygonGeometry)>>('CPolygonGeometry_contours');
 late final _CPolygonGeometry_contours = _CPolygonGeometry_contoursPtr.asFunction<_CArray_CArray_CGeoPoint Function(_CPolygonGeometry)>();
+late final _CPolygonGeometry_elevationPtr = _lookup<ffi.NativeFunction<_COptional_CElevation Function(_CPolygonGeometry)>>('CPolygonGeometry_elevation');
+late final _CPolygonGeometry_elevation = _CPolygonGeometry_elevationPtr.asFunction<_COptional_CElevation Function(_CPolygonGeometry)>();
 
 late final _CPolygonGeometry_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CPolygonGeometry_cg_objectIdentifier');
 late final _CPolygonGeometry_cg_objectIdentifier = _CPolygonGeometry_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -54950,6 +55326,10 @@ late final _CCircleOptionsMakeDefault = _CCircleOptionsMakeDefaultPtr.asFunction
 
 late final _CResult_CCircle_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CResult_CCircle)>>('CResult_CCircle_release');
 late final _CResult_CCircle_release = _CResult_CCircle_releasePtr.asFunction<void Function(_CResult_CCircle)>();
+
+late final _CDashedPolygonOptionsMakeDefaultPtr = _lookup<ffi.NativeFunction<_CDashedPolygonOptions Function()>>('CDashedPolygonOptionsMakeDefault');
+late final _CDashedPolygonOptionsMakeDefault = _CDashedPolygonOptionsMakeDefaultPtr.asFunction<_CDashedPolygonOptions Function()>();
+
 late final _CPolygon_contoursPtr = _lookup<ffi.NativeFunction<_CArray_CArray_CGeoPoint Function(_CPolygon)>>('CPolygon_contours');
 late final _CPolygon_contours = _CPolygon_contoursPtr.asFunction<_CArray_CArray_CGeoPoint Function(_CPolygon)>();
 late final _CPolygon_setContours_CArray_CArray_CGeoPointPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPolygon, _CArray_CArray_CGeoPoint)>>('CPolygon_setContours_CArray_CArray_CGeoPoint');
@@ -54966,6 +55346,14 @@ late final _CPolygon_strokeColorPtr = _lookup<ffi.NativeFunction<_CColor Functio
 late final _CPolygon_strokeColor = _CPolygon_strokeColorPtr.asFunction<_CColor Function(_CPolygon)>();
 late final _CPolygon_setStrokeColor_CColorPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPolygon, _CColor)>>('CPolygon_setStrokeColor_CColor');
 late final _CPolygon_setStrokeColor_CColor = _CPolygon_setStrokeColor_CColorPtr.asFunction<void Function(_CPolygon, _CColor)>();
+late final _CPolygon_dashedPolygonOptionsPtr = _lookup<ffi.NativeFunction<_COptional_CDashedPolygonOptions Function(_CPolygon)>>('CPolygon_dashedPolygonOptions');
+late final _CPolygon_dashedPolygonOptions = _CPolygon_dashedPolygonOptionsPtr.asFunction<_COptional_CDashedPolygonOptions Function(_CPolygon)>();
+late final _CPolygon_setDashedPolygonOptions_COptional_CDashedPolygonOptionsPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPolygon, _COptional_CDashedPolygonOptions)>>('CPolygon_setDashedPolygonOptions_COptional_CDashedPolygonOptions');
+late final _CPolygon_setDashedPolygonOptions_COptional_CDashedPolygonOptions = _CPolygon_setDashedPolygonOptions_COptional_CDashedPolygonOptionsPtr.asFunction<void Function(_CPolygon, _COptional_CDashedPolygonOptions)>();
+late final _CPolygon_elevationPtr = _lookup<ffi.NativeFunction<_COptional_CElevation Function(_CPolygon)>>('CPolygon_elevation');
+late final _CPolygon_elevation = _CPolygon_elevationPtr.asFunction<_COptional_CElevation Function(_CPolygon)>();
+late final _CPolygon_setElevation_COptional_CElevationPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPolygon, _COptional_CElevation)>>('CPolygon_setElevation_COptional_CElevation');
+late final _CPolygon_setElevation_COptional_CElevation = _CPolygon_setElevation_COptional_CElevationPtr.asFunction<void Function(_CPolygon, _COptional_CElevation)>();
 
 late final _CPolygon_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CPolygon_cg_objectIdentifier');
 late final _CPolygon_cg_objectIdentifier = _CPolygon_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -54980,6 +55368,9 @@ late final _CPolygon_retain = _CPolygon_retainPtr.asFunction<_CPolygon Function(
 late final _CPolygonMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPolygon Function()>>('CPolygonMakeDefault');
 late final _CPolygonMakeDefault = _CPolygonMakeDefaultPtr.asFunction<_CPolygon Function()>();
 
+
+late final _COptional_CDashedPolygonOptionsMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CDashedPolygonOptions Function()>>('COptional_CDashedPolygonOptionsMakeDefault');
+late final _COptional_CDashedPolygonOptionsMakeDefault = _COptional_CDashedPolygonOptionsMakeDefaultPtr.asFunction<_COptional_CDashedPolygonOptions Function()>();
 
 late final _CPolygonOptionsMakeDefaultPtr = _lookup<ffi.NativeFunction<_CPolygonOptions Function()>>('CPolygonOptionsMakeDefault');
 late final _CPolygonOptionsMakeDefault = _CPolygonOptionsMakeDefaultPtr.asFunction<_CPolygonOptions Function()>();
@@ -55032,6 +55423,10 @@ late final _CPolyline_gradientPolylineOptionsPtr = _lookup<ffi.NativeFunction<_C
 late final _CPolyline_gradientPolylineOptions = _CPolyline_gradientPolylineOptionsPtr.asFunction<_COptional_CGradientPolylineOptions Function(_CPolyline)>();
 late final _CPolyline_setGradientPolylineOptions_COptional_CGradientPolylineOptionsPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPolyline, _COptional_CGradientPolylineOptions)>>('CPolyline_setGradientPolylineOptions_COptional_CGradientPolylineOptions');
 late final _CPolyline_setGradientPolylineOptions_COptional_CGradientPolylineOptions = _CPolyline_setGradientPolylineOptions_COptional_CGradientPolylineOptionsPtr.asFunction<void Function(_CPolyline, _COptional_CGradientPolylineOptions)>();
+late final _CPolyline_elevationPtr = _lookup<ffi.NativeFunction<_COptional_CElevation Function(_CPolyline)>>('CPolyline_elevation');
+late final _CPolyline_elevation = _CPolyline_elevationPtr.asFunction<_COptional_CElevation Function(_CPolyline)>();
+late final _CPolyline_setElevation_COptional_CElevationPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPolyline, _COptional_CElevation)>>('CPolyline_setElevation_COptional_CElevation');
+late final _CPolyline_setElevation_COptional_CElevation = _CPolyline_setElevation_COptional_CElevationPtr.asFunction<void Function(_CPolyline, _COptional_CElevation)>();
 
 late final _CPolyline_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CPolyline_cg_objectIdentifier');
 late final _CPolyline_cg_objectIdentifier = _CPolyline_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
