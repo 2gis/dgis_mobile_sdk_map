@@ -18,7 +18,7 @@ class CameraMovesPage extends StatefulWidget {
 
 class _CameraMovesState extends State<CameraMovesPage> {
   final sdkContext = AppContainer().initializeSdk();
-  final mapWidgetController = sdk.MapWidgetController();
+  sdk.MapWidgetController? mapWidgetController;
   sdk.Map? sdkMap;
   sdk.LocationService? locationService;
   CancelableOperation<sdk.CameraAnimatedMoveResult>? moveCameraCancellable;
@@ -109,11 +109,13 @@ class _CameraMovesState extends State<CameraMovesPage> {
       appBar: AppBar(title: Text(widget.title)),
       body: Stack(
         children: <Widget>[
-          sdk.MapWidget(
-            sdkContext: sdkContext,
-            mapOptions: sdk.MapOptions(),
-            controller: mapWidgetController,
-          ),
+          if (mapWidgetController == null)
+            const SizedBox.shrink()
+          else
+            sdk.MapWidget(
+              sdkContext: sdkContext,
+              controller: mapWidgetController!,
+            ),
           Align(
             alignment: Alignment.bottomRight,
             child: CupertinoButton(
@@ -128,19 +130,28 @@ class _CameraMovesState extends State<CameraMovesPage> {
 
   Future<void> initContext() async {
     locationService = sdk.LocationService(sdkContext);
-    mapWidgetController
-      ..getMapAsync((map) {
-        sdkMap = map;
-
-        const locationController = sdk.MyLocationControllerSettings(
-          bearingSource: sdk.BearingSource.satellite,
-        );
-        final locationSource =
-            sdk.MyLocationMapObjectSource(sdkContext, locationController);
-        map.addSource(locationSource);
-      })
-      ..copyrightAlignment = Alignment.bottomLeft;
+    await _createMapController();
     await checkLocationPermissions(locationService!);
+  }
+
+  Future<void> _createMapController() async {
+    final createdMapWidgetController =
+        await createMapWidgetController(sdkContext);
+    if (!mounted) {
+      return;
+    }
+    sdkMap = createdMapWidgetController.map;
+
+    const locationController = sdk.MyLocationControllerSettings(
+      bearingSource: sdk.BearingSource.satellite,
+    );
+    final locationSource =
+        sdk.MyLocationMapObjectSource(sdkContext, locationController);
+    sdkMap!.addSource(locationSource);
+    setState(() {
+      mapWidgetController = createdMapWidgetController
+        ..copyrightAlignment = Alignment.bottomLeft;
+    });
   }
 
   void _show() {
