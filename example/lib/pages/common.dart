@@ -4,17 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:dgis_mobile_sdk_map/dgis.dart' as sdk;
 import 'package:permission_handler/permission_handler.dart';
 
-Future<sdk.MapWidgetController> createMapWidgetController(
-  sdk.Context sdkContext, {
-  sdk.MapControllerOptions controllerOptions = const sdk.MapControllerOptions(),
-}) async {
-  final mapController = await sdk.MapController.create(
-    sdkContext,
-    controllerOptions,
-  ).value;
-  return sdk.MapWidgetController(mapController);
-}
-
 Future<void> checkLocationPermissions(
   sdk.LocationService locationService,
 ) async {

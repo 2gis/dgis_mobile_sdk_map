@@ -17,7 +17,7 @@ class MapGesturesPage extends StatefulWidget {
 
 class _MapGesturesState extends State<MapGesturesPage> {
   final sdkContext = AppContainer().initializeSdk();
-  sdk.MapWidgetController? mapWidgetController;
+  final mapWidgetController = sdk.MapWidgetController();
   final formKey = GlobalKey<FormState>();
   sdk.GestureManager? gestureManager;
   sdk.TouchEventsObserver? touchEventsObserver;
@@ -27,23 +27,20 @@ class _MapGesturesState extends State<MapGesturesPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(initContext());
+    initContext();
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentMapWidgetController = mapWidgetController;
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       body: Stack(
         children: <Widget>[
-          if (currentMapWidgetController == null)
-            const SizedBox.shrink()
-          else
-            sdk.MapWidget(
-              sdkContext: sdkContext,
-              controller: currentMapWidgetController,
-            ),
+          sdk.MapWidget(
+            sdkContext: sdkContext,
+            mapOptions: sdk.MapOptions(),
+            controller: mapWidgetController,
+          ),
           Align(
             alignment: Alignment.bottomRight,
             child: CupertinoButton(
@@ -57,23 +54,11 @@ class _MapGesturesState extends State<MapGesturesPage> {
   }
 
   Future<void> initContext() async {
-    await _createMapController();
-  }
-
-  Future<void> _createMapController() async {
-    final createdMapWidgetController = await createMapWidgetController(
-      sdkContext,
-    );
-    if (!mounted) {
-      return;
-    }
-
-    gestureManager = createdMapWidgetController.gestureManager;
-
-    setState(() {
-      mapWidgetController = createdMapWidgetController
-        ..copyrightAlignment = Alignment.bottomLeft;
-    });
+    mapWidgetController
+      ..getMapAsync((map) {
+        gestureManager = mapWidgetController.gestureManager;
+      })
+      ..copyrightAlignment = Alignment.bottomLeft;
   }
 
   void _show() {
@@ -211,20 +196,15 @@ class _MapGesturesState extends State<MapGesturesPage> {
   }
 
   void _updateTouchEventsObserver(BuildContext context) {
-    final currentMapWidgetController = mapWidgetController;
-    if (currentMapWidgetController == null) {
-      return;
-    }
-
     if (touchEventsObserver != null) {
       touchEventsObserver = null;
-      currentMapWidgetController.setTouchEventsObserver(null);
+      mapWidgetController.setTouchEventsObserver(null);
       return;
     }
 
     touchEventsObserver =
         _TouchEventsObserverImpl(ScaffoldMessenger.of(context));
-    currentMapWidgetController.setTouchEventsObserver(touchEventsObserver);
+    mapWidgetController.setTouchEventsObserver(touchEventsObserver);
   }
 }
 

@@ -5255,6 +5255,75 @@ extension _DartToCFile on File {
     return (_CFileMakeDefault().._impl=_self)._retain();
   }
 }
+// MARK: - GeoRect
+
+/**
+ Прямоугольная область в сферической системе координат (например, WGS84).
+ Данная структура не привязана к конкретной геодезической системе координат.
+*/
+class GeoRect {
+  /** Юго-западная точка, левая нижняя граница прямоугольника. */
+  final GeoPoint southWestPoint;
+  /** Северо-восточная точка, правая верхняя граница прямоугольника. */
+  final GeoPoint northEastPoint;
+
+  const GeoRect({
+    required this.southWestPoint,
+    required this.northEastPoint
+  });
+
+  GeoRect copyWith({
+    GeoPoint? southWestPoint,
+    GeoPoint? northEastPoint
+  }) {
+    return GeoRect(
+      southWestPoint: southWestPoint ?? this.southWestPoint,
+      northEastPoint: northEastPoint ?? this.northEastPoint
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is GeoRect &&
+    other.runtimeType == runtimeType &&
+    other.southWestPoint == southWestPoint &&
+    other.northEastPoint == northEastPoint;
+
+  @override
+  int get hashCode {
+    return Object.hash(southWestPoint, northEastPoint);
+  }
+
+}
+final class _CGeoRect extends ffi.Struct {
+  external _CGeoPoint southWestPoint;
+
+  external _CGeoPoint northEastPoint;
+
+}
+// MARK: - GeoRect <-> _CGeoRect
+
+extension _CGeoRectToDart on _CGeoRect {
+  GeoRect _toDart() {
+    return GeoRect(
+      southWestPoint: this.southWestPoint._toDart(),
+      northEastPoint: this.northEastPoint._toDart()
+    );
+  }
+}
+
+extension _DartTo_CGeoRect on GeoRect {
+  _CGeoRect _copyFromDartTo_CGeoRect() {
+    final res = _CGeoRectMakeDefault();
+    res.southWestPoint = this.southWestPoint._copyFromDartTo_CGeoPoint();
+    res.northEastPoint = this.northEastPoint._copyFromDartTo_CGeoPoint();
+    return res;
+  }
+}
+extension _CGeoRectRelease on _CGeoRect {
+  void _releaseIntermediate() {
+  }
+}
+
 // MARK: - calculateBearing
 
 /**
@@ -5328,6 +5397,98 @@ extension GeoPointIsGeoPointValid on GeoPoint {
     bool res = _CFunction_G_isGeoPointValid_With_CGeoPoint(_a0);
     return res;
   }
+}
+// MARK: - GeoRect
+
+extension GeoRectIsGeoRectValid on GeoRect {
+  bool get isGeoRectValid {
+    var _a0 = this._copyFromDartTo_CGeoRect();
+    bool res = _CFunction_G_isGeoRectValid_With_CGeoRect(_a0);
+    return res;
+  }
+}
+// MARK: - GeoRect
+
+extension GeoRectContainsPoint on GeoRect {
+  bool containsPoint(
+    GeoPoint point
+  )  {
+    var _a0 = this._copyFromDartTo_CGeoRect();
+    var _a1 = point._copyFromDartTo_CGeoPoint();
+    bool res = _CFunction_G_containsPoint_With_CGeoRect_CGeoPoint(_a0, _a1);
+    return res;
+  }
+
+}
+// MARK: - GeoRect
+
+extension GeoRectContainsRect on GeoRect {
+  bool containsRect(
+    GeoRect rect2
+  )  {
+    var _a0 = this._copyFromDartTo_CGeoRect();
+    var _a1 = rect2._copyFromDartTo_CGeoRect();
+    bool res = _CFunction_G_containsRect_With_CGeoRect_CGeoRect(_a0, _a1);
+    return res;
+  }
+
+}
+// MARK: - GeoRect
+
+extension GeoRectExpandPoint on GeoRect {
+  GeoRect expandPoint(
+    GeoPoint point
+  )  {
+    var _a0 = this._copyFromDartTo_CGeoRect();
+    var _a1 = point._copyFromDartTo_CGeoPoint();
+    _CGeoRect res = _CFunction_G_expandPoint_With_CGeoRect_CGeoPoint(_a0, _a1);
+    return res._toDart();
+  }
+
+}
+// MARK: - GeoRect
+
+extension GeoRectExpandRect on GeoRect {
+  GeoRect expandRect(
+    GeoRect rect2
+  )  {
+    var _a0 = this._copyFromDartTo_CGeoRect();
+    var _a1 = rect2._copyFromDartTo_CGeoRect();
+    _CGeoRect res = _CFunction_G_expandRect_With_CGeoRect_CGeoRect(_a0, _a1);
+    return res._toDart();
+  }
+
+}
+// MARK: - GeoRect
+
+extension GeoRectIsDegenerate on GeoRect {
+  /**
+   Проверяет прямоугольник на вырожденность.
+   Если точки в прямоугольнике равны, то он вырождается в точку.
+   Вырожденный прямоугольник является корректным прямоугольником. Некорректный прямоугольник не является вырожденным.
+  */
+  bool get isDegenerate {
+    var _a0 = this._copyFromDartTo_CGeoRect();
+    bool res = _CFunction_G_isDegenerate_With_CGeoRect(_a0);
+    return res;
+  }
+}
+// MARK: - GeoRect
+
+extension GeoRectIntersects on GeoRect {
+  /**
+   Пересекаются ли прямоугольники, т.е. имеют общие точки.
+   Прямогольники, с общими точками лишь на границе, так же считаются пересекающимися.
+  */
+  bool intersects(
+    GeoRect rect2
+  )  {
+    var _a0 = this._copyFromDartTo_CGeoRect();
+    var _a1 = rect2._copyFromDartTo_CGeoRect();
+    bool res = _CFunction_G_intersects_With_CGeoRect_CGeoRect(_a0, _a1);
+    return res;
+  }
+
 }
 // MARK: - ApartmentRange
 
@@ -8913,88 +9074,6 @@ extension _DartTo_COptional_CTradeLicense on TradeLicense? {
     return cOptional;
   }
 }
-// MARK: - CategorySortType
-
-/** Тип сортировки категорий. */
-enum CategorySortType {
-  /** По алфавиту. */
-  byName(0),
-  /** По убыванию популярности. */
-  byPopularity(1),
-  ;
-
-  const CategorySortType(this.rawValue);
-  final int rawValue;
-
-  static CategorySortType getByValue(int value) {
-    return CategorySortType.values.firstWhere((x) => x.rawValue == value);
-  }
-}
-
-
-final class _CCategorySortType extends ffi.Struct {
-  @ffi.Uint32()
-  external int rawValue;
-}
-
-extension _CCategorySortTypeBasicFunctions on _CCategorySortType {
-  void _releaseIntermediate() {
-  }
-}
-
-extension _CCategorySortTypeToDart on _CCategorySortType {
-  CategorySortType _toDart() {
-    return CategorySortType.getByValue(this.rawValue);
-  }
-}
-
-extension _DartTo_CCategorySortType on CategorySortType {
-  _CCategorySortType _copyFromDartTo_CCategorySortType() {
-    return _CCategorySortTypeMakeDefault()..rawValue = this.rawValue;
-  }
-}
-	
-// MARK: - CategoryType
-
-/** Тип категории. */
-enum CategoryType {
-  /** Объединяющая категория, содержащая дочерние категории. */
-  generalRubric(0),
-  /** Категория, по которой можно искать объекты справочника. */
-  rubric(1),
-  ;
-
-  const CategoryType(this.rawValue);
-  final int rawValue;
-
-  static CategoryType getByValue(int value) {
-    return CategoryType.values.firstWhere((x) => x.rawValue == value);
-  }
-}
-
-
-final class _CCategoryType extends ffi.Struct {
-  @ffi.Uint32()
-  external int rawValue;
-}
-
-extension _CCategoryTypeBasicFunctions on _CCategoryType {
-  void _releaseIntermediate() {
-  }
-}
-
-extension _CCategoryTypeToDart on _CCategoryType {
-  CategoryType _toDart() {
-    return CategoryType.getByValue(this.rawValue);
-  }
-}
-
-extension _DartTo_CCategoryType on CategoryType {
-  _CCategoryType _copyFromDartTo_CCategoryType() {
-    return _CCategoryTypeMakeDefault()..rawValue = this.rawValue;
-  }
-}
-	
 // MARK: - ClosedReason
 
 /** Причина закрытия. */
@@ -10835,6 +10914,16 @@ extension _DartTo_COpenStatus on OpenStatus {
 
 /** Статус работы. */
 class WorkStatus {
+  /**
+   Открыто ли сейчас
+   Используйте open_status для получения более детального статуса работы организации.
+  */
+  final bool isOpen;
+  /**
+   Текстовое описание.
+   Например, "Открыто до 21:00", "Круглосуточно", "Закроется через 5 минут".
+  */
+  final String description;
   /** Статус. */
   final OpenStatus openStatus;
   /**
@@ -10855,6 +10944,8 @@ class WorkStatus {
   final String? breakHint;
 
   const WorkStatus({
+    this.isOpen = false,
+    required this.description,
     required this.openStatus,
     required this.openStatusHint,
     required this.scheduleHint,
@@ -10862,12 +10953,16 @@ class WorkStatus {
   });
 
   WorkStatus copyWith({
+    bool? isOpen,
+    String? description,
     OpenStatus? openStatus,
     String? openStatusHint,
     Optional<String?>? scheduleHint,
     Optional<String?>? breakHint
   }) {
     return WorkStatus(
+      isOpen: isOpen ?? this.isOpen,
+      description: description ?? this.description,
       openStatus: openStatus ?? this.openStatus,
       openStatusHint: openStatusHint ?? this.openStatusHint,
       scheduleHint: scheduleHint != null ? scheduleHint.value : this.scheduleHint,
@@ -10878,6 +10973,8 @@ class WorkStatus {
   bool operator ==(Object other) =>
     identical(this, other) || other is WorkStatus &&
     other.runtimeType == runtimeType &&
+    other.isOpen == isOpen &&
+    other.description == description &&
     other.openStatus == openStatus &&
     other.openStatusHint == openStatusHint &&
     other.scheduleHint == scheduleHint &&
@@ -10885,11 +10982,16 @@ class WorkStatus {
 
   @override
   int get hashCode {
-    return Object.hash(openStatus, openStatusHint, scheduleHint, breakHint);
+    return Object.hash(isOpen, description, openStatus, openStatusHint, scheduleHint, breakHint);
   }
 
 }
 final class _CWorkStatus extends ffi.Struct {
+  @ffi.Bool()
+  external bool isOpen;
+
+  external _CString description;
+
   external _COpenStatus openStatus;
 
   external _CString openStatusHint;
@@ -10904,6 +11006,8 @@ final class _CWorkStatus extends ffi.Struct {
 extension _CWorkStatusToDart on _CWorkStatus {
   WorkStatus _toDart() {
     return WorkStatus(
+      isOpen: this.isOpen,
+      description: this.description._toDart(),
       openStatus: this.openStatus._toDart(),
       openStatusHint: this.openStatusHint._toDart(),
       scheduleHint: this.scheduleHint._toDart(),
@@ -10915,6 +11019,8 @@ extension _CWorkStatusToDart on _CWorkStatus {
 extension _DartTo_CWorkStatus on WorkStatus {
   _CWorkStatus _copyFromDartTo_CWorkStatus() {
     final res = _CWorkStatusMakeDefault();
+    res.isOpen = this.isOpen;
+    res.description = this.description._copyFromDartTo_CString();
     res.openStatus = this.openStatus._copyFromDartTo_COpenStatus();
     res.openStatusHint = this.openStatusHint._copyFromDartTo_CString();
     res.scheduleHint = this.scheduleHint._copyFromDartTo_COptional_CString();
@@ -10924,6 +11030,7 @@ extension _DartTo_CWorkStatus on WorkStatus {
 }
 extension _CWorkStatusRelease on _CWorkStatus {
   void _releaseIntermediate() {
+    description._releaseIntermediate();
     openStatusHint._releaseIntermediate();
     scheduleHint._releaseIntermediate();
     breakHint._releaseIntermediate();
@@ -15524,777 +15631,6 @@ extension _DartTo_COptional_CPage on Page? {
     return cOptional;
   }
 }
-// MARK: - Category
-
-/** Категория справочника. */
-class Category implements ffi.Finalizable {
-  final ffi.Pointer<ffi.Void> _self;
-
-  /** Идентификатор категории. */
-  RubricId get id {
-    _CRubricId res = _CCategory_id(_CCategoryMakeDefault().._impl=_self);
-    return res._toDart();
-  }
-  /** Тип категории. */
-  CategoryType get type {
-    _CCategoryType res = _CCategory_type(_CCategoryMakeDefault().._impl=_self);
-    return res._toDart();
-  }
-  /** Название категории. */
-  String get name {
-    _CString res = _CCategory_name(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /**
-   Заголовок для отображения в UI.
-  
-   - Note: при отсутствии может быть пустой строкой.
-  */
-  String get title {
-    _CString res = _CCategory_title(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /**
-   Короткая подпись к иконке для отображения в UI.
-  
-   - Note: при отсутствии может быть пустой строкой.
-  */
-  String get caption {
-    _CString res = _CCategory_caption(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /**
-   SEO-синоним.
-  
-   - Note: при отсутствии может быть пустой строкой.
-  */
-  String get seoName {
-    _CString res = _CCategory_seoName(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /**
-   Ключевое слово, по которому была найдена категория.
-  
-   - Note: при отсутствии может быть пустой строкой.
-  */
-  String get keyword {
-    _CString res = _CCategory_keyword(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /**
-   Уникальное имя, которое можно использовать как часть имени файла-иконки.
-  
-   - Note: при отсутствии может быть пустой строкой.
-  */
-  String get tag {
-    _CString res = _CCategory_tag(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /**
-   Ссылка на изображение.
-  
-   - Note: при отсутствии может быть пустой строкой.
-  */
-  String get iconUrl {
-    _CString res = _CCategory_iconUrl(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /**
-   Иконка категории для выдачи suggest.
-  
-   - Note: при отсутствии может быть пустой строкой.
-  */
-  String get suggestIcon {
-    _CString res = _CCategory_suggestIcon(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /**
-   Идентификатор родительской категории.
-  
-   - Note: при отсутствии может быть пустой строкой.
-  */
-  RubricId? get parentId {
-    _COptional_CRubricId res = _CCategory_parentId(_CCategoryMakeDefault().._impl=_self);
-    return res._toDart();
-  }
-  /** Количество филиалов организаций в данной категории. */
-  int get branchCount {
-    int res = _CCategory_branchCount(_CCategoryMakeDefault().._impl=_self);
-    return res;
-  }
-  /** Количество организаций в данной категории. */
-  int get orgCount {
-    int res = _CCategory_orgCount(_CCategoryMakeDefault().._impl=_self);
-    return res;
-  }
-  /** Количество геообъектов в данной категории. */
-  int get geoCount {
-    int res = _CCategory_geoCount(_CCategoryMakeDefault().._impl=_self);
-    return res;
-  }
-  /** Разрешены ли отзывы к организациям этой категории непосредственно на flamp.ru. */
-  bool get isReviewableOnFlamp {
-    bool res = _CCategory_isReviewableOnFlamp(_CCategoryMakeDefault().._impl=_self);
-    return res;
-  }
-  /** Дочерние категории. */
-  List<Category> get children {
-    _CArray_CCategory res = _CCategory_children(_CCategoryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  static final _finalizer = ffi.NativeFinalizer(_CCategory_releasePtr);
-
-  Category._raw(this._self);
-  factory Category._create(ffi.Pointer<ffi.Void> self) {
-    final classObject = Category._raw(self);
-    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
-    return classObject;
-  }
-
-  factory Category.fromMessage(ClassMessage<Category> message) {
-    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
-    return Category._create(ptr);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is Category &&
-    other.runtimeType == runtimeType &&
-    _CCategory_cg_objectIdentifier(this._self) == _CCategory_cg_objectIdentifier(other._self);
-
-  @override
-  int get hashCode {
-    final identifier = _CCategory_cg_objectIdentifier(this._self);
-    return identifier.hashCode;
-  }
-
-}
-
-extension CategoryToClassMessage on Category {
-  ClassMessage<Category> message() {
-    final res = (_CCategoryMakeDefault().._impl=_self)._retain();
-    return ClassMessage<Category>(res._impl.address, _CCategory_release);
-  }
-}
-
-// MARK: - Category <-> CCategory
-
-final class _CCategory extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CCategoryBasicFunctions on _CCategory {
-  void _releaseIntermediate() {
-    _CCategory_release(_impl);
-  }
-
-  _CCategory _retain() {
-    return _CCategory_retain(_impl);
-  }
-}
-
-extension _CCategoryToDart on _CCategory {
-  Category _toDart() {
-    return Category._create(_retain()._impl);
-  }
-}
-
-
-extension _DartToCCategory on Category {
-  _CCategory _copyFromDartTo_CCategory() {
-    return (_CCategoryMakeDefault().._impl=_self)._retain();
-  }
-}
-// MARK: - RubricId? <-> _COptional_CRubricId
-
-final class _COptional_CRubricId extends ffi.Struct {
-  
-  external _CRubricId value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CRubricIdBasicFunctions on _COptional_CRubricId {
-  void _releaseIntermediate() {
-    
-  }
-}
-
-extension _COptional_CRubricIdToDart on _COptional_CRubricId {
-  RubricId? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CRubricId on RubricId? {
-  _COptional_CRubricId _copyFromDartTo_COptional_CRubricId() {
-    final cOptional = _COptional_CRubricIdMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CRubricId();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
-// MARK: - List<Category> <-> _CArray_CCategory
-
-final class _CArray_CCategory extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CArray_CCategoryToDart on _CArray_CCategory {
-  List<Category> _toDart() {
-    return _fillFromC();
-  }
-}
-
-extension _DartTo_CArray_CCategory on List<Category> {
-  _CArray_CCategory _copyFromDartTo_CArray_CCategory() {
-    final cArray = _CArray_CCategorymakeEmpty();
-    forEach((item) {
-        final cItem = item._copyFromDartTo_CCategory();
-        _CArray_CCategoryaddElement(cArray, cItem);
-        cItem._releaseIntermediate();
-    });
-    return cArray;
-  }
-}
-
-extension _CArray_CCategoryBasicFunctions on _CArray_CCategory {
-  void _releaseIntermediate() {
-    _CArray_CCategory_release(this);
-  }
-
-  static final _listToFill = <Category>[];
-
-  static void _iterate(_CCategory item) {
-    _listToFill.add(item._toDart());
-  }
-
-  List<Category> _fillFromC() {
-    _forEach_CArray_CCategory(this, ffi.Pointer.fromFunction<ffi.Void Function(_CCategory)>(_iterate));
-    final result = List<Category>.from(_listToFill);
-    _listToFill.clear();
-    return result;
-  }
-}
-	
-// MARK: - CategoriesPage
-
-/** Страница результатов запроса категорий. */
-class CategoriesPage implements ffi.Finalizable {
-  final ffi.Pointer<ffi.Void> _self;
-
-  /** Категории этой страницы. */
-  List<Category> get items {
-    _CArray_CCategory res = _CCategoriesPage_items(_CCategoriesPageMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  static final _finalizer = ffi.NativeFinalizer(_CCategoriesPage_releasePtr);
-
-  CategoriesPage._raw(this._self);
-  factory CategoriesPage._create(ffi.Pointer<ffi.Void> self) {
-    final classObject = CategoriesPage._raw(self);
-    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
-    return classObject;
-  }
-
-  factory CategoriesPage.fromMessage(ClassMessage<CategoriesPage> message) {
-    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
-    return CategoriesPage._create(ptr);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is CategoriesPage &&
-    other.runtimeType == runtimeType &&
-    _CCategoriesPage_cg_objectIdentifier(this._self) == _CCategoriesPage_cg_objectIdentifier(other._self);
-
-  @override
-  int get hashCode {
-    final identifier = _CCategoriesPage_cg_objectIdentifier(this._self);
-    return identifier.hashCode;
-  }
-
-  // MARK: CategoriesPage: Methods
-
-  /**
-   Получить предыдущую страницу результатов.
-  
-   - Returns: future, резолвящаяся в ненулевой указатель на предыдущую страницу, если страница успешно получена
-   future, резолвящаяся в нулевой указатель, если предыдущая страница отсутствует
-   exceptional future, если произошла ошибка при получении страницы
-  */
-  CancelableOperation<CategoriesPage?> fetchPrevPage()  {
-    _CFuture_COptional_CCategoriesPage res = _CCategoriesPage_fetchPrevPage(_CCategoriesPageMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /**
-   Получить следующую страницу результатов.
-  
-   - Returns: future, резолвящаяся в ненулевой указатель на следующую страницу, если страница успешно получена
-   future, резолвящаяся в нулевой указатель, если следующая страница отсутствует
-   exceptional future, если произошла ошибка при получении страницы
-  */
-  CancelableOperation<CategoriesPage?> fetchNextPage()  {
-    _CFuture_COptional_CCategoriesPage res = _CCategoriesPage_fetchNextPage(_CCategoriesPageMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-}
-
-extension CategoriesPageToClassMessage on CategoriesPage {
-  ClassMessage<CategoriesPage> message() {
-    final res = (_CCategoriesPageMakeDefault().._impl=_self)._retain();
-    return ClassMessage<CategoriesPage>(res._impl.address, _CCategoriesPage_release);
-  }
-}
-
-// MARK: - CategoriesPage <-> CCategoriesPage
-
-final class _CCategoriesPage extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CCategoriesPageBasicFunctions on _CCategoriesPage {
-  void _releaseIntermediate() {
-    _CCategoriesPage_release(_impl);
-  }
-
-  _CCategoriesPage _retain() {
-    return _CCategoriesPage_retain(_impl);
-  }
-}
-
-extension _CCategoriesPageToDart on _CCategoriesPage {
-  CategoriesPage _toDart() {
-    return CategoriesPage._create(_retain()._impl);
-  }
-}
-
-
-extension _DartToCCategoriesPage on CategoriesPage {
-  _CCategoriesPage _copyFromDartTo_CCategoriesPage() {
-    return (_CCategoriesPageMakeDefault().._impl=_self)._retain();
-  }
-}
-// MARK: - CancelableOperation<CategoriesPage?> <-> _CFuture_COptional_CCategoriesPage
-
-final class _CFuture_COptional_CCategoriesPage extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-class _CFuture_COptional_CCategoriesPage_Cancellable {
-  final Completer<CategoriesPage?> completer;
-  final _CFuture_COptional_CCategoriesPage _futureInstance;
-  final _CCancellable _cancellable;
-  final ffi.NativeCallable<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)> valueFunctionCallable;
-  final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
-
-  _CFuture_COptional_CCategoriesPage_Cancellable(
-    this.completer,
-    this._futureInstance,
-    this._cancellable,
-    this.valueFunctionCallable,
-    this.failureCallable
-  );
-
-  void cancel() {
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
-    this.valueFunctionCallable.close();
-    this.failureCallable.close();
-  }
-}
-
-extension _CFuture_COptional_CCategoriesPageBasicFunctions on _CFuture_COptional_CCategoriesPage {
-  void _releaseIntermediate() {
-    _CFuture_COptional_CCategoriesPage_release(this);
-  }
-
-  _CFuture_COptional_CCategoriesPage _retain() {
-    return _CFuture_COptional_CCategoriesPage_retain(this);
-  }
-}
-
-extension _CFuture_COptional_CCategoriesPageToDart on _CFuture_COptional_CCategoriesPage {
-  static int instanceCounter = 0;
-  static final instanceMap = <int, _CFuture_COptional_CCategoriesPage_Cancellable>{};
-
-  static void valueFunction(_COptional_CCategoriesPage cValue, int instanceId) {
-    final instance = instanceMap[instanceId];
-    if (instance != null) {
-      instance.completer.complete(cValue._toDart());
-      instance.cancel();
-      instanceMap.remove(instanceId);
-    }
-    cValue._releaseIntermediate();
-  }
-
-  static void failure(_CError cError, int instanceId) {
-    final instance = instanceMap[instanceId];
-    if (instance != null) {
-      instance.completer.completeError(cError._toDart());
-      instance.cancel();
-      instanceMap.remove(instanceId);
-    }
-    cError._releaseIntermediate();
-  }
-
-  CancelableOperation<CategoriesPage?> _toDart() {
-    final futureInstance = this._retain();
-    final instanceId = instanceCounter;
-    instanceCounter += 1;
-    final completer = new Completer<CategoriesPage?>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
-    final cCancel = _CFuture_COptional_CCategoriesPageReceive(
-      futureInstance,
-      instanceId,
-      valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
-    );
-    final cancellable = cCancel._retain();
-    instanceMap[instanceId] = _CFuture_COptional_CCategoriesPage_Cancellable(
-      completer,
-      futureInstance,
-      cancellable,
-      valueFunctionCallable,
-      failureCallable
-    );
-    cCancel._releaseIntermediate();
-    return CancelableOperation.fromFuture(
-      completer.future,
-      onCancel: () {
-        try {
-          instanceMap[instanceId]?.cancel();
-          instanceMap.remove(instanceId);
-        } finally {
-          valueFunctionCallable.close();
-        }
-      },
-    );
-  }
-}
-
-extension _DartTo_CFuture_COptional_CCategoriesPage on CancelableOperation<CategoriesPage?> {
-  _CFuture_COptional_CCategoriesPage _copyFromDartTo_CFuture_COptional_CCategoriesPage() {
-    return _CFuture_COptional_CCategoriesPageMakeDefault();
-  }
-}
-	
-// MARK: - CategoriesPage? <-> _COptional_CCategoriesPage
-
-final class _COptional_CCategoriesPage extends ffi.Struct {
-  
-  external _CCategoriesPage value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CCategoriesPageBasicFunctions on _COptional_CCategoriesPage {
-  void _releaseIntermediate() {
-    _COptional_CCategoriesPage_release(this);
-  }
-}
-
-extension _COptional_CCategoriesPageToDart on _COptional_CCategoriesPage {
-  CategoriesPage? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CCategoriesPage on CategoriesPage? {
-  _COptional_CCategoriesPage _copyFromDartTo_COptional_CCategoriesPage() {
-    final cOptional = _COptional_CCategoriesPageMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CCategoriesPage();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
-// MARK: - SearchCategoriesResult
-
-/** Результат запроса категорий. */
-class SearchCategoriesResult implements ffi.Finalizable {
-  final ffi.Pointer<ffi.Void> _self;
-
-  /** Общее количество найденных категорий. */
-  int get total {
-    int res = _CSearchCategoriesResult_total(_CSearchCategoriesResultMakeDefault().._impl=_self);
-    return res;
-  }
-  /**
-   Первая страница результатов запроса категорий.
-  
-   - Returns: ненулевой указатель на первую страницу, если результаты есть
-   нулевой указатель, если ничего не найдено
-  */
-  CategoriesPage? get firstPage {
-    _COptional_CCategoriesPage res = _CSearchCategoriesResult_firstPage(_CSearchCategoriesResultMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  static final _finalizer = ffi.NativeFinalizer(_CSearchCategoriesResult_releasePtr);
-
-  SearchCategoriesResult._raw(this._self);
-  factory SearchCategoriesResult._create(ffi.Pointer<ffi.Void> self) {
-    final classObject = SearchCategoriesResult._raw(self);
-    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
-    return classObject;
-  }
-
-  factory SearchCategoriesResult.fromMessage(ClassMessage<SearchCategoriesResult> message) {
-    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
-    return SearchCategoriesResult._create(ptr);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is SearchCategoriesResult &&
-    other.runtimeType == runtimeType &&
-    _CSearchCategoriesResult_cg_objectIdentifier(this._self) == _CSearchCategoriesResult_cg_objectIdentifier(other._self);
-
-  @override
-  int get hashCode {
-    final identifier = _CSearchCategoriesResult_cg_objectIdentifier(this._self);
-    return identifier.hashCode;
-  }
-
-}
-
-extension SearchCategoriesResultToClassMessage on SearchCategoriesResult {
-  ClassMessage<SearchCategoriesResult> message() {
-    final res = (_CSearchCategoriesResultMakeDefault().._impl=_self)._retain();
-    return ClassMessage<SearchCategoriesResult>(res._impl.address, _CSearchCategoriesResult_release);
-  }
-}
-
-// MARK: - SearchCategoriesResult <-> CSearchCategoriesResult
-
-final class _CSearchCategoriesResult extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CSearchCategoriesResultBasicFunctions on _CSearchCategoriesResult {
-  void _releaseIntermediate() {
-    _CSearchCategoriesResult_release(_impl);
-  }
-
-  _CSearchCategoriesResult _retain() {
-    return _CSearchCategoriesResult_retain(_impl);
-  }
-}
-
-extension _CSearchCategoriesResultToDart on _CSearchCategoriesResult {
-  SearchCategoriesResult _toDart() {
-    return SearchCategoriesResult._create(_retain()._impl);
-  }
-}
-
-
-extension _DartToCSearchCategoriesResult on SearchCategoriesResult {
-  _CSearchCategoriesResult _copyFromDartTo_CSearchCategoriesResult() {
-    return (_CSearchCategoriesResultMakeDefault().._impl=_self)._retain();
-  }
-}
-// MARK: - GeoRect
-
-/**
- Прямоугольная область в сферической системе координат (например, WGS84).
- Данная структура не привязана к конкретной геодезической системе координат.
-*/
-class GeoRect {
-  /** Юго-западная точка, левая нижняя граница прямоугольника. */
-  final GeoPoint southWestPoint;
-  /** Северо-восточная точка, правая верхняя граница прямоугольника. */
-  final GeoPoint northEastPoint;
-
-  const GeoRect({
-    required this.southWestPoint,
-    required this.northEastPoint
-  });
-
-  GeoRect copyWith({
-    GeoPoint? southWestPoint,
-    GeoPoint? northEastPoint
-  }) {
-    return GeoRect(
-      southWestPoint: southWestPoint ?? this.southWestPoint,
-      northEastPoint: northEastPoint ?? this.northEastPoint
-    );
-  }
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is GeoRect &&
-    other.runtimeType == runtimeType &&
-    other.southWestPoint == southWestPoint &&
-    other.northEastPoint == northEastPoint;
-
-  @override
-  int get hashCode {
-    return Object.hash(southWestPoint, northEastPoint);
-  }
-
-}
-final class _CGeoRect extends ffi.Struct {
-  external _CGeoPoint southWestPoint;
-
-  external _CGeoPoint northEastPoint;
-
-}
-// MARK: - GeoRect <-> _CGeoRect
-
-extension _CGeoRectToDart on _CGeoRect {
-  GeoRect _toDart() {
-    return GeoRect(
-      southWestPoint: this.southWestPoint._toDart(),
-      northEastPoint: this.northEastPoint._toDart()
-    );
-  }
-}
-
-extension _DartTo_CGeoRect on GeoRect {
-  _CGeoRect _copyFromDartTo_CGeoRect() {
-    final res = _CGeoRectMakeDefault();
-    res.southWestPoint = this.southWestPoint._copyFromDartTo_CGeoPoint();
-    res.northEastPoint = this.northEastPoint._copyFromDartTo_CGeoPoint();
-    return res;
-  }
-}
-extension _CGeoRectRelease on _CGeoRect {
-  void _releaseIntermediate() {
-  }
-}
-
-// MARK: - CategoryGeoContext
-
-/** Географический контекст, по которому SDK уточнит регион при запросе категорий. */
-final class CategoryGeoContext {
-  final Object? _value;
-  final int _index;
-
-  CategoryGeoContext._raw(this._value, this._index);
-
-  CategoryGeoContext.geoRect(GeoRect value) : this._raw(value, 0);
-  CategoryGeoContext.geoPoint(GeoPoint value) : this._raw(value, 1);
-
-  bool get isGeoRect => this._index == 0;
-  GeoRect? get asGeoRect => this.isGeoRect ? this._value as GeoRect : null;
-
-  bool get isGeoPoint => this._index == 1;
-  GeoPoint? get asGeoPoint => this.isGeoPoint ? this._value as GeoPoint : null;
-
-  T match<T>({
-    required T Function(GeoRect value) geoRect,
-    required T Function(GeoPoint value) geoPoint,
-  }) {
-    return switch (this._index) {
-      0 => geoRect(this._value as GeoRect),
-      1 => geoPoint(this._value as GeoPoint),
-      _ => throw NativeException("Unrecognized case index ${this._index}")
-    };
-  }
-
-  @override
-  String toString() => "CategoryGeoContext(${this._value})";
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is CategoryGeoContext &&
-    other.runtimeType == runtimeType &&
-    other._value == this._value && other._index == this._index;
-
-  @override
-  int get hashCode => Object.hash(this._index, this._value);
-}
-
-final class _CCategoryGeoContextImpl extends ffi.Union {
-  external _CGeoRect _geoRect;
-  external _CGeoPoint _geoPoint;
-}
-
-final class _CCategoryGeoContext extends ffi.Struct {
-  external _CCategoryGeoContextImpl _impl;
-  @ffi.Uint8()
-  external int _index;
-}
-
-extension _CCategoryGeoContextBasicFunctions on _CCategoryGeoContext {
-  void _releaseIntermediate() {
-    _CCategoryGeoContext_release(this);
-  }
-}
-	
-// MARK: - CategoryGeoContext <-> CCategoryGeoContext
-
-extension _CCategoryGeoContextToDart on _CCategoryGeoContext {
-  CategoryGeoContext _toDart() {
-    return switch (this._index) {
-      0 => CategoryGeoContext.geoRect(this._impl._geoRect._toDart()),
-      1 => CategoryGeoContext.geoPoint(this._impl._geoPoint._toDart()),
-      _ => throw NativeException("Unrecognized case index ${this._index}")
-    };
-  }
-}
-
-extension _DartTo_CCategoryGeoContext on CategoryGeoContext {
-  _CCategoryGeoContext _copyFromDartTo_CCategoryGeoContext() {
-    var res = _CCategoryGeoContextMakeDefault();
-    this.match<void>(
-      geoRect: (GeoRect value) {
-        res._impl._geoRect = value._copyFromDartTo_CGeoRect();
-        res._index = 0;
-      },
-      geoPoint: (GeoPoint value) {
-        res._impl._geoPoint = value._copyFromDartTo_CGeoPoint();
-        res._index = 1;
-      },
-    );
-    return res;
-  }
-}
-
 // MARK: - WidgetType
 
 /** Тип виджета. */
@@ -18516,75 +17852,6 @@ extension _DartToCSearchQuery on SearchQuery {
     return (_CSearchQueryMakeDefault().._impl=_self)._retain();
   }
 }
-// MARK: - CategoryQuery
-
-/** Запрос категорий. */
-class CategoryQuery implements ffi.Finalizable {
-  final ffi.Pointer<ffi.Void> _self;
-
-  static final _finalizer = ffi.NativeFinalizer(_CCategoryQuery_releasePtr);
-
-  CategoryQuery._raw(this._self);
-  factory CategoryQuery._create(ffi.Pointer<ffi.Void> self) {
-    final classObject = CategoryQuery._raw(self);
-    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
-    return classObject;
-  }
-
-  factory CategoryQuery.fromMessage(ClassMessage<CategoryQuery> message) {
-    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
-    return CategoryQuery._create(ptr);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is CategoryQuery &&
-    other.runtimeType == runtimeType &&
-    _CCategoryQuery_cg_objectIdentifier(this._self) == _CCategoryQuery_cg_objectIdentifier(other._self);
-
-  @override
-  int get hashCode {
-    final identifier = _CCategoryQuery_cg_objectIdentifier(this._self);
-    return identifier.hashCode;
-  }
-
-}
-
-extension CategoryQueryToClassMessage on CategoryQuery {
-  ClassMessage<CategoryQuery> message() {
-    final res = (_CCategoryQueryMakeDefault().._impl=_self)._retain();
-    return ClassMessage<CategoryQuery>(res._impl.address, _CCategoryQuery_release);
-  }
-}
-
-// MARK: - CategoryQuery <-> CCategoryQuery
-
-final class _CCategoryQuery extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CCategoryQueryBasicFunctions on _CCategoryQuery {
-  void _releaseIntermediate() {
-    _CCategoryQuery_release(_impl);
-  }
-
-  _CCategoryQuery _retain() {
-    return _CCategoryQuery_retain(_impl);
-  }
-}
-
-extension _CCategoryQueryToDart on _CCategoryQuery {
-  CategoryQuery _toDart() {
-    return CategoryQuery._create(_retain()._impl);
-  }
-}
-
-
-extension _DartToCCategoryQuery on CategoryQuery {
-  _CCategoryQuery _copyFromDartTo_CCategoryQuery() {
-    return (_CCategoryQueryMakeDefault().._impl=_self)._retain();
-  }
-}
 // MARK: - SuggestObjectHandler
 
 /** Предложен конкретный объект справочника. */
@@ -19649,16 +18916,16 @@ class SearchManager implements ffi.Finalizable {
   }
 
   /**
-   Получить категории, соответствующие данному запросу.
+   Получить объект справочника по строковому идентификатору.
   
-   - Returns: future, резолвящаяся в ненулевой указатель на результат получения категорий
-   или exceptional future, если произошла ошибка при получении категорий
+   - Returns: future, резолвящаяся в указатель на объект справочника.
+   Если объект не найден, то вернется пустой указатель
   */
-  CancelableOperation<SearchCategoriesResult> searchCategories(
-    CategoryQuery query
+  CancelableOperation<DirectoryObject?> searchById(
+    String id
   )  {
-    var _a1 = query._copyFromDartTo_CCategoryQuery();
-    _CFuture_CSearchCategoriesResult res = _CSearchManager_searchCategories_CCategoryQuery(_CSearchManagerMakeDefault().._impl=_self, _a1);
+    var _a1 = id._copyFromDartTo_CString();
+    _CFuture_COptional_CDirectoryObject res = _CSearchManager_searchById_CString(_CSearchManagerMakeDefault().._impl=_self, _a1);
     _a1._releaseIntermediate();
     final t = res._toDart();
     res._releaseIntermediate();
@@ -19666,19 +18933,34 @@ class SearchManager implements ffi.Finalizable {
   }
 
   /**
-   Получить объекты справочника по строковым идентификаторам с указанной локалью.
-   Для онлайна можно передать не более 100 идентификаторов.
+   Получить объект справочника по идентификатору.
   
-   - Returns: future, резолвящаяся в список объектов справочника.
-   Если объекты не найдены, то вернётся пустой список.
+   - Returns: future, резолвящаяся в указатель на объект справочника.
+   Если объект не найден, то вернется пустой указатель
   */
-  CancelableOperation<List<DirectoryObject>> searchByIds(
-    List<String> ids,
-    [Locale? locale = null
-    ])  {
-    var _a1 = ids._copyFromDartTo_CArray_CString();
+  CancelableOperation<DirectoryObject?> searchByDirectoryObjectId(
+    DgisObjectId objectId
+  )  {
+    var _a1 = objectId._copyFromDartTo_CDgisObjectId();
+    _CFuture_COptional_CDirectoryObject res = _CSearchManager_searchByDirectoryObjectId_CDgisObjectId(_CSearchManagerMakeDefault().._impl=_self, _a1);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
+   Получить объект справочника по строковому идентификатору с указанной локалью.
+  
+   - Returns: future, резолвящаяся в указатель на объект справочника.
+   Если объект не найден, то вернется пустой указатель
+  */
+  CancelableOperation<DirectoryObject?> searchByIdWithLocale(
+    String id,
+    Locale? locale
+  )  {
+    var _a1 = id._copyFromDartTo_CString();
     var _a2 = locale._copyFromDartTo_COptional_CLocale();
-    _CFuture_CArray_CDirectoryObject res = _CSearchManager_searchByIds_CArray_CString_COptional_CLocale(_CSearchManagerMakeDefault().._impl=_self, _a1, _a2);
+    _CFuture_COptional_CDirectoryObject res = _CSearchManager_searchByIdWithLocale_CString_COptional_CLocale(_CSearchManagerMakeDefault().._impl=_self, _a1, _a2);
     _a2._releaseIntermediate();
     _a1._releaseIntermediate();
     final t = res._toDart();
@@ -19687,21 +18969,19 @@ class SearchManager implements ffi.Finalizable {
   }
 
   /**
-   Получить объекты справочника по идентификаторам с указанной локалью.
-   Для онлайна можно передать не более 100 идентификаторов.
+   Получить объект справочника по идентификатору с указанной локалью.
   
-   - Returns: future, резолвящаяся в список объектов справочника.
-   Если объекты не найдены, то вернётся пустой список.
+   - Returns: future, резолвящаяся в указатель на объект справочника.
+   Если объект не найден, то вернется пустой указатель
   */
-  CancelableOperation<List<DirectoryObject>> searchByDirectoryObjectIds(
-    List<DgisObjectId> objectIds,
-    [Locale? locale = null
-    ])  {
-    var _a1 = objectIds._copyFromDartTo_CArray_CDgisObjectId();
+  CancelableOperation<DirectoryObject?> searchByDirectoryObjectIdWithLocale(
+    DgisObjectId objectId,
+    Locale? locale
+  )  {
+    var _a1 = objectId._copyFromDartTo_CDgisObjectId();
     var _a2 = locale._copyFromDartTo_COptional_CLocale();
-    _CFuture_CArray_CDirectoryObject res = _CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocale(_CSearchManagerMakeDefault().._impl=_self, _a1, _a2);
+    _CFuture_COptional_CDirectoryObject res = _CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocale(_CSearchManagerMakeDefault().._impl=_self, _a1, _a2);
     _a2._releaseIntermediate();
-    _a1._releaseIntermediate();
     final t = res._toDart();
     res._releaseIntermediate();
     return t;
@@ -19992,20 +19272,20 @@ extension _DartTo_CFuture_CSearchResult on CancelableOperation<SearchResult> {
   }
 }
 	
-// MARK: - CancelableOperation<SearchCategoriesResult> <-> _CFuture_CSearchCategoriesResult
+// MARK: - CancelableOperation<DirectoryObject?> <-> _CFuture_COptional_CDirectoryObject
 
-final class _CFuture_CSearchCategoriesResult extends ffi.Struct {
+final class _CFuture_COptional_CDirectoryObject extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _impl;
 }
 
-class _CFuture_CSearchCategoriesResult_Cancellable {
-  final Completer<SearchCategoriesResult> completer;
-  final _CFuture_CSearchCategoriesResult _futureInstance;
+class _CFuture_COptional_CDirectoryObject_Cancellable {
+  final Completer<DirectoryObject?> completer;
+  final _CFuture_COptional_CDirectoryObject _futureInstance;
   final _CCancellable _cancellable;
-  final ffi.NativeCallable<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)> valueFunctionCallable;
+  final ffi.NativeCallable<ffi.Void Function(_COptional_CDirectoryObject, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
 
-  _CFuture_CSearchCategoriesResult_Cancellable(
+  _CFuture_COptional_CDirectoryObject_Cancellable(
     this.completer,
     this._futureInstance,
     this._cancellable,
@@ -20021,21 +19301,21 @@ class _CFuture_CSearchCategoriesResult_Cancellable {
   }
 }
 
-extension _CFuture_CSearchCategoriesResultBasicFunctions on _CFuture_CSearchCategoriesResult {
+extension _CFuture_COptional_CDirectoryObjectBasicFunctions on _CFuture_COptional_CDirectoryObject {
   void _releaseIntermediate() {
-    _CFuture_CSearchCategoriesResult_release(this);
+    _CFuture_COptional_CDirectoryObject_release(this);
   }
 
-  _CFuture_CSearchCategoriesResult _retain() {
-    return _CFuture_CSearchCategoriesResult_retain(this);
+  _CFuture_COptional_CDirectoryObject _retain() {
+    return _CFuture_COptional_CDirectoryObject_retain(this);
   }
 }
 
-extension _CFuture_CSearchCategoriesResultToDart on _CFuture_CSearchCategoriesResult {
+extension _CFuture_COptional_CDirectoryObjectToDart on _CFuture_COptional_CDirectoryObject {
   static int instanceCounter = 0;
-  static final instanceMap = <int, _CFuture_CSearchCategoriesResult_Cancellable>{};
+  static final instanceMap = <int, _CFuture_COptional_CDirectoryObject_Cancellable>{};
 
-  static void valueFunction(_CSearchCategoriesResult cValue, int instanceId) {
+  static void valueFunction(_COptional_CDirectoryObject cValue, int instanceId) {
     final instance = instanceMap[instanceId];
     if (instance != null) {
       instance.completer.complete(cValue._toDart());
@@ -20055,21 +19335,21 @@ extension _CFuture_CSearchCategoriesResultToDart on _CFuture_CSearchCategoriesRe
     cError._releaseIntermediate();
   }
 
-  CancelableOperation<SearchCategoriesResult> _toDart() {
+  CancelableOperation<DirectoryObject?> _toDart() {
     final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final completer = new Completer<SearchCategoriesResult>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)>.listener(valueFunction);
+    final completer = new Completer<DirectoryObject?>();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CDirectoryObject, ffi.Int64)>.listener(valueFunction);
     final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
-    final cCancel = _CFuture_CSearchCategoriesResultReceive(
+    final cCancel = _CFuture_COptional_CDirectoryObjectReceive(
       futureInstance,
       instanceId,
       valueFunctionCallable.nativeFunction,
       failureCallable.nativeFunction
     );
     final cancellable = cCancel._retain();
-    instanceMap[instanceId] = _CFuture_CSearchCategoriesResult_Cancellable(
+    instanceMap[instanceId] = _CFuture_COptional_CDirectoryObject_Cancellable(
       completer,
       futureInstance,
       cancellable,
@@ -20091,117 +19371,48 @@ extension _CFuture_CSearchCategoriesResultToDart on _CFuture_CSearchCategoriesRe
   }
 }
 
-extension _DartTo_CFuture_CSearchCategoriesResult on CancelableOperation<SearchCategoriesResult> {
-  _CFuture_CSearchCategoriesResult _copyFromDartTo_CFuture_CSearchCategoriesResult() {
-    return _CFuture_CSearchCategoriesResultMakeDefault();
+extension _DartTo_CFuture_COptional_CDirectoryObject on CancelableOperation<DirectoryObject?> {
+  _CFuture_COptional_CDirectoryObject _copyFromDartTo_CFuture_COptional_CDirectoryObject() {
+    return _CFuture_COptional_CDirectoryObjectMakeDefault();
   }
 }
 	
-// MARK: - CancelableOperation<List<DirectoryObject>> <-> _CFuture_CArray_CDirectoryObject
+// MARK: - DirectoryObject? <-> _COptional_CDirectoryObject
 
-final class _CFuture_CArray_CDirectoryObject extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
+final class _COptional_CDirectoryObject extends ffi.Struct {
+  
+  external _CDirectoryObject value;
+  @ffi.Bool()
+  external bool hasValue;
 }
 
-class _CFuture_CArray_CDirectoryObject_Cancellable {
-  final Completer<List<DirectoryObject>> completer;
-  final _CFuture_CArray_CDirectoryObject _futureInstance;
-  final _CCancellable _cancellable;
-  final ffi.NativeCallable<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)> valueFunctionCallable;
-  final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
-
-  _CFuture_CArray_CDirectoryObject_Cancellable(
-    this.completer,
-    this._futureInstance,
-    this._cancellable,
-    this.valueFunctionCallable,
-    this.failureCallable
-  );
-
-  void cancel() {
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
-    this.valueFunctionCallable.close();
-    this.failureCallable.close();
-  }
-}
-
-extension _CFuture_CArray_CDirectoryObjectBasicFunctions on _CFuture_CArray_CDirectoryObject {
+extension _COptional_CDirectoryObjectBasicFunctions on _COptional_CDirectoryObject {
   void _releaseIntermediate() {
-    _CFuture_CArray_CDirectoryObject_release(this);
-  }
-
-  _CFuture_CArray_CDirectoryObject _retain() {
-    return _CFuture_CArray_CDirectoryObject_retain(this);
+    _COptional_CDirectoryObject_release(this);
   }
 }
 
-extension _CFuture_CArray_CDirectoryObjectToDart on _CFuture_CArray_CDirectoryObject {
-  static int instanceCounter = 0;
-  static final instanceMap = <int, _CFuture_CArray_CDirectoryObject_Cancellable>{};
-
-  static void valueFunction(_CArray_CDirectoryObject cValue, int instanceId) {
-    final instance = instanceMap[instanceId];
-    if (instance != null) {
-      instance.completer.complete(cValue._toDart());
-      instance.cancel();
-      instanceMap.remove(instanceId);
+extension _COptional_CDirectoryObjectToDart on _COptional_CDirectoryObject {
+  DirectoryObject? _toDart() {
+    if (!this.hasValue) {
+      return null;
     }
-    cValue._releaseIntermediate();
+    return this.value._toDart();
   }
+}
 
-  static void failure(_CError cError, int instanceId) {
-    final instance = instanceMap[instanceId];
-    if (instance != null) {
-      instance.completer.completeError(cError._toDart());
-      instance.cancel();
-      instanceMap.remove(instanceId);
+extension _DartTo_COptional_CDirectoryObject on DirectoryObject? {
+  _COptional_CDirectoryObject _copyFromDartTo_COptional_CDirectoryObject() {
+    final cOptional = _COptional_CDirectoryObjectMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CDirectoryObject();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
     }
-    cError._releaseIntermediate();
-  }
-
-  CancelableOperation<List<DirectoryObject>> _toDart() {
-    final futureInstance = this._retain();
-    final instanceId = instanceCounter;
-    instanceCounter += 1;
-    final completer = new Completer<List<DirectoryObject>>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
-    final cCancel = _CFuture_CArray_CDirectoryObjectReceive(
-      futureInstance,
-      instanceId,
-      valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
-    );
-    final cancellable = cCancel._retain();
-    instanceMap[instanceId] = _CFuture_CArray_CDirectoryObject_Cancellable(
-      completer,
-      futureInstance,
-      cancellable,
-      valueFunctionCallable,
-      failureCallable
-    );
-    cCancel._releaseIntermediate();
-    return CancelableOperation.fromFuture(
-      completer.future,
-      onCancel: () {
-        try {
-          instanceMap[instanceId]?.cancel();
-          instanceMap.remove(instanceId);
-        } finally {
-          valueFunctionCallable.close();
-        }
-      },
-    );
+    return cOptional;
   }
 }
-
-extension _DartTo_CFuture_CArray_CDirectoryObject on CancelableOperation<List<DirectoryObject>> {
-  _CFuture_CArray_CDirectoryObject _copyFromDartTo_CFuture_CArray_CDirectoryObject() {
-    return _CFuture_CArray_CDirectoryObjectMakeDefault();
-  }
-}
-	
 // MARK: - Locale
 
 /** Локаль. */
@@ -20327,13 +19538,15 @@ extension _DartTo_COptional_CLocale on Locale? {
  Поиск осуществляется по глобальному индексу, а также по локальным индексам сегментов,
  где сегмент - это некоторый кусок разбиения глобальной карты.
  Процедура выбора сегментов для поиска осуществляется следующими способами (по убыванию приоритета):
- 1. При указании прямоугольной области интереса (set_area_of_interest), поиск ведется в некоторой ее окрестности.
- 2. Если не указан вышестоящий параметр, то учитывается точка положения пользователя.
+ 1. Если явно задается область в виде полигона в запросе (spatial_restriction), то она учитывается в первую очередь.
+ Способы ниже по приоритету отключаются, однако используются для учёта расстояний в релевантности поиска.
+ 2. При указании прямоугольной области интереса (bounding_rect), поиск ведется в некоторой ее окрестности.
+ 3. Если не указаны вышестоящие по приоритету параметры, то учитывается точка положения пользователя.
 
  - Todo: Данное условие пока не работает. Будет исправлено в ближайших релизах.
- 3. При упоминании в тексте запроса широко известного объекта (город, область или другой топоним)
+ 4. При упоминании в тексте запроса широко известного объекта (город, область или другой топоним)
  добавляется в поиск тот сегмент, в который попадает точка найденного объекта из глобального индекса.
- 4. Если не указано ничего из вышеперечисленного, то осуществляется поиск по глобальному индексу.
+ 5. Если не указано ничего из вышеперечисленного, то осуществляется поиск по глобальному индексу.
 */
 class SearchQueryBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
@@ -20371,6 +19584,45 @@ class SearchQueryBuilder implements ffi.Finalizable {
 
   // MARK: CSearchQueryBuilder: Static Methods
 
+  /** Начать построение текстового поискового запроса c указанным текстом. */
+  static SearchQueryBuilder fromQueryText(
+    String queryText
+  )  {
+    var _a0 = queryText._copyFromDartTo_CString();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_S_fromQueryText_CString(_a0);
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /** Начать построение поискового запроса на основе идентификаторов рубрик. */
+  static SearchQueryBuilder fromRubricIds(
+    List<RubricId> rubricIds
+  )  {
+    var _a0 = rubricIds._copyFromDartTo_CArray_CRubricId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_S_fromRubricIds_CArray_CRubricId(_a0);
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /** Начать построение текстового поискового запроса с фильтрацией по идентификаторам рубрик. */
+  static SearchQueryBuilder fromQueryTextAndRubricIds(
+    String queryText,
+    List<RubricId> rubricIds
+  )  {
+    var _a0 = queryText._copyFromDartTo_CString();
+    var _a1 = rubricIds._copyFromDartTo_CArray_CRubricId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_S_fromQueryTextAndRubricIds_CString_CArray_CRubricId(_a0, _a1);
+    _a1._releaseIntermediate();
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
   /**
    Начать построение запроса на основе запроса #query для изменения части параметров.
   
@@ -20382,6 +19634,44 @@ class SearchQueryBuilder implements ffi.Finalizable {
     var _a0 = query._copyFromDartTo_CSearchQuery();
     _CSearchQueryBuilder res = _CSearchQueryBuilder_S_fromQuery_CSearchQuery(_a0);
     _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /** Начать построение поискового запроса c указанным идентификатором организации. */
+  static SearchQueryBuilder fromOrgId(
+    OrgId orgId
+  )  {
+    var _a0 = orgId._copyFromDartTo_COrgId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_S_fromOrgId_COrgId(_a0);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /** Начать построение поискового запроса c указанным идентификатором здания. */
+  static SearchQueryBuilder fromBuildingId(
+    BuildingId buildingId
+  )  {
+    var _a0 = buildingId._copyFromDartTo_CBuildingId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_S_fromBuildingId_CBuildingId(_a0);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
+   Начать построение поискового запроса со строгим ограничением в указанном центре области поиска.
+   Радиус по умолчанию равен 250.
+   Конфликтует с методоми set_spatial_restriction и set_restriction_geometry.
+   Работает только с онлайн поиском.
+  */
+  static SearchQueryBuilder fromGeoPoint(
+    GeoPoint geoPoint
+  )  {
+    var _a0 = geoPoint._copyFromDartTo_CGeoPoint();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_S_fromGeoPoint_CGeoPoint(_a0);
     final t = res._toDart();
     res._releaseIntermediate();
     return t;
@@ -20413,28 +19703,40 @@ class SearchQueryBuilder implements ffi.Finalizable {
     return t;
   }
 
-  /**
-   TODO: SDK-4701 -
-   Сделать поддержку нескольких идентификаторов организаций в одном запросе или вернуть старую семантику.
-   Задать фильтр по идентификаторам организаций, к которым относятся компании.
-  */
-  SearchQueryBuilder setOrgIds(
-    List<OrgId> orgIds
+  /** Задать фильтр по идентификатору организации, к которой относится компания. */
+  SearchQueryBuilder setOrgId(
+    OrgId? orgId
   )  {
-    var _a1 = orgIds._copyFromDartTo_CArray_COrgId();
-    _CSearchQueryBuilder res = _CSearchQueryBuilder_setOrgIds_CArray_COrgId(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
-    _a1._releaseIntermediate();
+    var _a1 = orgId._copyFromDartTo_COptional_COrgId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setOrgId_COptional_COrgId(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
     final t = res._toDart();
     res._releaseIntermediate();
     return t;
   }
 
-  /** Задать идентификаторы зданий для фильтрации объектов в зданиях. */
-  SearchQueryBuilder setBuildingIds(
-    List<BuildingId> buildingIds
+  /** Задать идентификатор здания для фильтрации объектов в здании. */
+  SearchQueryBuilder setBuildingId(
+    BuildingId? buildingId
   )  {
-    var _a1 = buildingIds._copyFromDartTo_CArray_CBuildingId();
-    _CSearchQueryBuilder res = _CSearchQueryBuilder_setBuildingIds_CArray_CBuildingId(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    var _a1 = buildingId._copyFromDartTo_COptional_CBuildingId();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setBuildingId_COptional_CBuildingId(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
+   Задать строгое ограничение области поиска в форме контура полигона.
+   Первая и последняя точки контура не обязаны совпадать.
+   Конфликтует с методоми set_restriction_geometry, set_geo_point и from_geo_point.
+  
+   - Note: по умолчанию ограничение отсутствует.
+  */
+  SearchQueryBuilder setSpatialRestriction(
+    List<GeoPoint>? spatialRestriction
+  )  {
+    var _a1 = spatialRestriction._copyFromDartTo_COptional_CArray_CGeoPoint();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
     _a1._releaseIntermediate();
     final t = res._toDart();
     res._releaseIntermediate();
@@ -20443,12 +19745,9 @@ class SearchQueryBuilder implements ffi.Finalizable {
 
   /**
    Задать строгое ограничение области поиска геометрией.
-   Для GeometryKind.Point будет выставлен центр строгого ограничения для поискового запроса.
-   Радиус по умолчанию равен 250 метров.
-  
+   Конфликтует с методоми set_spatial_restriction, set_geo_point и from_geo_point.
+   Для GeometryKind.Point будет выставлен set_geo_point.
    GeometryKind.Polyline и GeometryKind.Polygon будут установлены как полигоны.
-   Первая и последняя точки контура не обязаны совпадать.
-  
    Геометрия типа GeometryKind.Complex будет установлена как мулитиполигон.
    Для GeometryKind.Point внутри GeometryKind.Complex геометрия будет
    преобразована в контур полигона с радиусом из set_radius.
@@ -20551,6 +19850,20 @@ class SearchQueryBuilder implements ffi.Finalizable {
   }
 
   /**
+   Задать центр строгого ограничения для поискового запроса. Радиус по умолчанию равен 250 метров.
+   Конфликтует с методом set_spatial_restriction.
+  */
+  SearchQueryBuilder setGeoPoint(
+    GeoPoint? geoPoint
+  )  {
+    var _a1 = geoPoint._copyFromDartTo_COptional_CGeoPoint();
+    _CSearchQueryBuilder res = _CSearchQueryBuilder_setGeoPoint_COptional_CGeoPoint(_CSearchQueryBuilderMakeDefault().._impl=_self, _a1);
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
    Задать радиус поиска в метрах.
    Работает в сочетании с установленным geo_point.
    Радиус по умолчанию равен 250 метров.
@@ -20637,92 +19950,78 @@ extension _DartToCSearchQueryBuilder on SearchQueryBuilder {
     return (_CSearchQueryBuilderMakeDefault().._impl=_self)._retain();
   }
 }
-// MARK: - List<OrgId> <-> _CArray_COrgId
+// MARK: - OrgId? <-> _COptional_COrgId
 
-final class _CArray_COrgId extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
+final class _COptional_COrgId extends ffi.Struct {
+  
+  external _COrgId value;
+  @ffi.Bool()
+  external bool hasValue;
 }
 
-extension _CArray_COrgIdToDart on _CArray_COrgId {
-  List<OrgId> _toDart() {
-    return _fillFromC();
-  }
-}
-
-extension _DartTo_CArray_COrgId on List<OrgId> {
-  _CArray_COrgId _copyFromDartTo_CArray_COrgId() {
-    final cArray = _CArray_COrgIdmakeEmpty();
-    forEach((item) {
-        final cItem = item._copyFromDartTo_COrgId();
-        _CArray_COrgIdaddElement(cArray, cItem);
-        
-    });
-    return cArray;
-  }
-}
-
-extension _CArray_COrgIdBasicFunctions on _CArray_COrgId {
+extension _COptional_COrgIdBasicFunctions on _COptional_COrgId {
   void _releaseIntermediate() {
-    _CArray_COrgId_release(this);
-  }
-
-  static final _listToFill = <OrgId>[];
-
-  static void _iterate(_COrgId item) {
-    _listToFill.add(item._toDart());
-  }
-
-  List<OrgId> _fillFromC() {
-    _forEach_CArray_COrgId(this, ffi.Pointer.fromFunction<ffi.Void Function(_COrgId)>(_iterate));
-    final result = List<OrgId>.from(_listToFill);
-    _listToFill.clear();
-    return result;
-  }
-}
-	
-// MARK: - List<BuildingId> <-> _CArray_CBuildingId
-
-final class _CArray_CBuildingId extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CArray_CBuildingIdToDart on _CArray_CBuildingId {
-  List<BuildingId> _toDart() {
-    return _fillFromC();
+    
   }
 }
 
-extension _DartTo_CArray_CBuildingId on List<BuildingId> {
-  _CArray_CBuildingId _copyFromDartTo_CArray_CBuildingId() {
-    final cArray = _CArray_CBuildingIdmakeEmpty();
-    forEach((item) {
-        final cItem = item._copyFromDartTo_CBuildingId();
-        _CArray_CBuildingIdaddElement(cArray, cItem);
-        
-    });
-    return cArray;
+extension _COptional_COrgIdToDart on _COptional_COrgId {
+  OrgId? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
   }
 }
 
-extension _CArray_CBuildingIdBasicFunctions on _CArray_CBuildingId {
+extension _DartTo_COptional_COrgId on OrgId? {
+  _COptional_COrgId _copyFromDartTo_COptional_COrgId() {
+    final cOptional = _COptional_COrgIdMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_COrgId();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
+// MARK: - List<GeoPoint>? <-> _COptional_CArray_CGeoPoint
+
+final class _COptional_CArray_CGeoPoint extends ffi.Struct {
+  
+  external _CArray_CGeoPoint value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CArray_CGeoPointBasicFunctions on _COptional_CArray_CGeoPoint {
   void _releaseIntermediate() {
-    _CArray_CBuildingId_release(this);
-  }
-
-  static final _listToFill = <BuildingId>[];
-
-  static void _iterate(_CBuildingId item) {
-    _listToFill.add(item._toDart());
-  }
-
-  List<BuildingId> _fillFromC() {
-    _forEach_CArray_CBuildingId(this, ffi.Pointer.fromFunction<ffi.Void Function(_CBuildingId)>(_iterate));
-    final result = List<BuildingId>.from(_listToFill);
-    _listToFill.clear();
-    return result;
+    _COptional_CArray_CGeoPoint_release(this);
   }
 }
-	
+
+extension _COptional_CArray_CGeoPointToDart on _COptional_CArray_CGeoPoint {
+  List<GeoPoint>? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CArray_CGeoPoint on List<GeoPoint>? {
+  _COptional_CArray_CGeoPoint _copyFromDartTo_COptional_CArray_CGeoPoint() {
+    final cOptional = _COptional_CArray_CGeoPointMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CArray_CGeoPoint();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
 // MARK: - GeoRect? <-> _COptional_CGeoRect
 
 final class _COptional_CGeoRect extends ffi.Struct {
@@ -20815,16 +20114,6 @@ class SuggestQueryBuilder implements ffi.Finalizable {
     return SuggestQueryBuilder._create(ptr);
   }
 
-  /** Начать построение запроса подсказки для заданного текста и области интереса. */
-  factory SuggestQueryBuilder(
-    String queryText
-  ) {
-    var _a0 = queryText._copyFromDartTo_CString();
-    _CSuggestQueryBuilder res = _CSuggestQueryBuilder_C_createWith_CString(_a0);
-    _a0._releaseIntermediate();
-    return SuggestQueryBuilder._create(res._impl);
-  }
-
   @override
   bool operator ==(Object other) =>
     identical(this, other) || other is SuggestQueryBuilder &&
@@ -20838,6 +20127,18 @@ class SuggestQueryBuilder implements ffi.Finalizable {
   }
 
   // MARK: CSuggestQueryBuilder: Static Methods
+
+  /** Начать построение запроса подсказки для заданного текста и области интереса. */
+  static SuggestQueryBuilder fromQueryText(
+    String queryText
+  )  {
+    var _a0 = queryText._copyFromDartTo_CString();
+    _CSuggestQueryBuilder res = _CSuggestQueryBuilder_S_fromQueryText_CString(_a0);
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
 
   /**
    Начать построение запроса подсказки на основе запроса #query для изменения части параметров.
@@ -20858,13 +20159,26 @@ class SuggestQueryBuilder implements ffi.Finalizable {
   // MARK: SuggestQueryBuilder: Methods
 
   /**
-   Задать строгое ограничение области поиска геометрией.
-   Для GeometryKind.Point геометрия будет преобразована в контур полигона с радиусом 250 метров.
-  
-   GeometryKind.Polyline и GeometryKind.Polygon будут установлены как полигоны.
+   Задать строгое ограничение области поиска в форме контура полигона.
    Первая и последняя точки контура не обязаны совпадать.
+   Конфликтует с методом set_restriction_geometry.
   
-   Геометрия типа GeometryKind.Complex будет установлена как мулитиполигон.
+   - Note: по умолчанию ограничение отсутствует
+  */
+  SuggestQueryBuilder setSpatialRestriction(
+    List<GeoPoint>? spatialRestriction
+  )  {
+    var _a1 = spatialRestriction._copyFromDartTo_COptional_CArray_CGeoPoint();
+    _CSuggestQueryBuilder res = _CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint(_CSuggestQueryBuilderMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+  /**
+   Задать строгое ограничение области поиска геометрией.
+   Конфликтует с методом set_spatial_restriction.
   
    - Note: по умолчанию ограничение отсутствует.
   */
@@ -21068,425 +20382,6 @@ extension _CArray_CSuggestedTypeBasicFunctions on _CArray_CSuggestedType {
   }
 }
 	
-// MARK: - CategorySearchQueryBuilder
-
-/** Построитель запроса поиска категорий по тексту. */
-class CategorySearchQueryBuilder implements ffi.Finalizable {
-  final ffi.Pointer<ffi.Void> _self;
-
-  static final _finalizer = ffi.NativeFinalizer(_CCategorySearchQueryBuilder_releasePtr);
-
-  CategorySearchQueryBuilder._raw(this._self);
-  factory CategorySearchQueryBuilder._create(ffi.Pointer<ffi.Void> self) {
-    final classObject = CategorySearchQueryBuilder._raw(self);
-    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
-    return classObject;
-  }
-
-  factory CategorySearchQueryBuilder.fromMessage(ClassMessage<CategorySearchQueryBuilder> message) {
-    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
-    return CategorySearchQueryBuilder._create(ptr);
-  }
-
-  /** Начать построение запроса поиска категорий по тексту. */
-  factory CategorySearchQueryBuilder(
-    String queryText
-  ) {
-    var _a0 = queryText._copyFromDartTo_CString();
-    _CCategorySearchQueryBuilder res = _CCategorySearchQueryBuilder_C_createWith_CString(_a0);
-    _a0._releaseIntermediate();
-    return CategorySearchQueryBuilder._create(res._impl);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is CategorySearchQueryBuilder &&
-    other.runtimeType == runtimeType &&
-    _CCategorySearchQueryBuilder_cg_objectIdentifier(this._self) == _CCategorySearchQueryBuilder_cg_objectIdentifier(other._self);
-
-  @override
-  int get hashCode {
-    final identifier = _CCategorySearchQueryBuilder_cg_objectIdentifier(this._self);
-    return identifier.hashCode;
-  }
-
-  // MARK: CategorySearchQueryBuilder: Methods
-
-  /**
-   Задать географический контекст запроса. Если не задан, то география будет определяться с помощью
-   LocationService.
-  */
-  CategorySearchQueryBuilder setGeoContext(
-    CategoryGeoContext? geoContext
-  )  {
-    var _a1 = geoContext._copyFromDartTo_COptional_CCategoryGeoContext();
-    _CCategorySearchQueryBuilder res = _CCategorySearchQueryBuilder_setGeoContext_COptional_CCategoryGeoContext(_CCategorySearchQueryBuilderMakeDefault().._impl=_self, _a1);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Задать размер страницы. */
-  CategorySearchQueryBuilder setPageSize(
-    int pageSize
-  )  {
-    _CCategorySearchQueryBuilder res = _CCategorySearchQueryBuilder_setPageSize_uint32_t(_CCategorySearchQueryBuilderMakeDefault().._impl=_self, pageSize);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Задать локаль для запроса категорий. */
-  CategorySearchQueryBuilder setLocale(
-    Locale? locale
-  )  {
-    var _a1 = locale._copyFromDartTo_COptional_CLocale();
-    _CCategorySearchQueryBuilder res = _CCategorySearchQueryBuilder_setLocale_COptional_CLocale(_CCategorySearchQueryBuilderMakeDefault().._impl=_self, _a1);
-    _a1._releaseIntermediate();
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Сформировать запрос категорий. */
-  CategoryQuery build()  {
-    _CCategoryQuery res = _CCategorySearchQueryBuilder_build(_CCategorySearchQueryBuilderMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-}
-
-extension CategorySearchQueryBuilderToClassMessage on CategorySearchQueryBuilder {
-  ClassMessage<CategorySearchQueryBuilder> message() {
-    final res = (_CCategorySearchQueryBuilderMakeDefault().._impl=_self)._retain();
-    return ClassMessage<CategorySearchQueryBuilder>(res._impl.address, _CCategorySearchQueryBuilder_release);
-  }
-}
-
-// MARK: - CategorySearchQueryBuilder <-> CCategorySearchQueryBuilder
-
-final class _CCategorySearchQueryBuilder extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CCategorySearchQueryBuilderBasicFunctions on _CCategorySearchQueryBuilder {
-  void _releaseIntermediate() {
-    _CCategorySearchQueryBuilder_release(_impl);
-  }
-
-  _CCategorySearchQueryBuilder _retain() {
-    return _CCategorySearchQueryBuilder_retain(_impl);
-  }
-}
-
-extension _CCategorySearchQueryBuilderToDart on _CCategorySearchQueryBuilder {
-  CategorySearchQueryBuilder _toDart() {
-    return CategorySearchQueryBuilder._create(_retain()._impl);
-  }
-}
-
-
-extension _DartToCCategorySearchQueryBuilder on CategorySearchQueryBuilder {
-  _CCategorySearchQueryBuilder _copyFromDartTo_CCategorySearchQueryBuilder() {
-    return (_CCategorySearchQueryBuilderMakeDefault().._impl=_self)._retain();
-  }
-}
-// MARK: - CategoryGeoContext? <-> _COptional_CCategoryGeoContext
-
-final class _COptional_CCategoryGeoContext extends ffi.Struct {
-  
-  external _CCategoryGeoContext value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CCategoryGeoContextBasicFunctions on _COptional_CCategoryGeoContext {
-  void _releaseIntermediate() {
-    
-  }
-}
-
-extension _COptional_CCategoryGeoContextToDart on _COptional_CCategoryGeoContext {
-  CategoryGeoContext? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CCategoryGeoContext on CategoryGeoContext? {
-  _COptional_CCategoryGeoContext _copyFromDartTo_COptional_CCategoryGeoContext() {
-    final cOptional = _COptional_CCategoryGeoContextMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CCategoryGeoContext();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
-// MARK: - CategoryListQueryBuilder
-
-/** Построитель запроса списка категорий. */
-class CategoryListQueryBuilder implements ffi.Finalizable {
-  final ffi.Pointer<ffi.Void> _self;
-
-  static final _finalizer = ffi.NativeFinalizer(_CCategoryListQueryBuilder_releasePtr);
-
-  CategoryListQueryBuilder._raw(this._self);
-  factory CategoryListQueryBuilder._create(ffi.Pointer<ffi.Void> self) {
-    final classObject = CategoryListQueryBuilder._raw(self);
-    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
-    return classObject;
-  }
-
-  factory CategoryListQueryBuilder.fromMessage(ClassMessage<CategoryListQueryBuilder> message) {
-    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
-    return CategoryListQueryBuilder._create(ptr);
-  }
-
-  /** Начать построение запроса списка категорий. */
-  factory CategoryListQueryBuilder() {
-    _CCategoryListQueryBuilder res = _CCategoryListQueryBuilder_C_create();
-    return CategoryListQueryBuilder._create(res._impl);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is CategoryListQueryBuilder &&
-    other.runtimeType == runtimeType &&
-    _CCategoryListQueryBuilder_cg_objectIdentifier(this._self) == _CCategoryListQueryBuilder_cg_objectIdentifier(other._self);
-
-  @override
-  int get hashCode {
-    final identifier = _CCategoryListQueryBuilder_cg_objectIdentifier(this._self);
-    return identifier.hashCode;
-  }
-
-  // MARK: CategoryListQueryBuilder: Methods
-
-  /** Задать родителя для запроса списка категорий. */
-  CategoryListQueryBuilder setParentId(
-    RubricId? parentId
-  )  {
-    var _a1 = parentId._copyFromDartTo_COptional_CRubricId();
-    _CCategoryListQueryBuilder res = _CCategoryListQueryBuilder_setParentId_COptional_CRubricId(_CCategoryListQueryBuilderMakeDefault().._impl=_self, _a1);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Задать сортировку для запроса списка категорий. */
-  CategoryListQueryBuilder setSortType(
-    CategorySortType sortType
-  )  {
-    var _a1 = sortType._copyFromDartTo_CCategorySortType();
-    _CCategoryListQueryBuilder res = _CCategoryListQueryBuilder_setSortType_CCategorySortType(_CCategoryListQueryBuilderMakeDefault().._impl=_self, _a1);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /**
-   Задать географический контекст запроса. Если не задан, то география будет определяться с помощью
-   LocationService.
-  */
-  CategoryListQueryBuilder setGeoContext(
-    CategoryGeoContext? geoContext
-  )  {
-    var _a1 = geoContext._copyFromDartTo_COptional_CCategoryGeoContext();
-    _CCategoryListQueryBuilder res = _CCategoryListQueryBuilder_setGeoContext_COptional_CCategoryGeoContext(_CCategoryListQueryBuilderMakeDefault().._impl=_self, _a1);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Задать размер страницы. */
-  CategoryListQueryBuilder setPageSize(
-    int pageSize
-  )  {
-    _CCategoryListQueryBuilder res = _CCategoryListQueryBuilder_setPageSize_uint32_t(_CCategoryListQueryBuilderMakeDefault().._impl=_self, pageSize);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Задать локаль для запроса категорий. */
-  CategoryListQueryBuilder setLocale(
-    Locale? locale
-  )  {
-    var _a1 = locale._copyFromDartTo_COptional_CLocale();
-    _CCategoryListQueryBuilder res = _CCategoryListQueryBuilder_setLocale_COptional_CLocale(_CCategoryListQueryBuilderMakeDefault().._impl=_self, _a1);
-    _a1._releaseIntermediate();
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Сформировать запрос категорий. */
-  CategoryQuery build()  {
-    _CCategoryQuery res = _CCategoryListQueryBuilder_build(_CCategoryListQueryBuilderMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-}
-
-extension CategoryListQueryBuilderToClassMessage on CategoryListQueryBuilder {
-  ClassMessage<CategoryListQueryBuilder> message() {
-    final res = (_CCategoryListQueryBuilderMakeDefault().._impl=_self)._retain();
-    return ClassMessage<CategoryListQueryBuilder>(res._impl.address, _CCategoryListQueryBuilder_release);
-  }
-}
-
-// MARK: - CategoryListQueryBuilder <-> CCategoryListQueryBuilder
-
-final class _CCategoryListQueryBuilder extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CCategoryListQueryBuilderBasicFunctions on _CCategoryListQueryBuilder {
-  void _releaseIntermediate() {
-    _CCategoryListQueryBuilder_release(_impl);
-  }
-
-  _CCategoryListQueryBuilder _retain() {
-    return _CCategoryListQueryBuilder_retain(_impl);
-  }
-}
-
-extension _CCategoryListQueryBuilderToDart on _CCategoryListQueryBuilder {
-  CategoryListQueryBuilder _toDart() {
-    return CategoryListQueryBuilder._create(_retain()._impl);
-  }
-}
-
-
-extension _DartToCCategoryListQueryBuilder on CategoryListQueryBuilder {
-  _CCategoryListQueryBuilder _copyFromDartTo_CCategoryListQueryBuilder() {
-    return (_CCategoryListQueryBuilderMakeDefault().._impl=_self)._retain();
-  }
-}
-// MARK: - CategoryGetByIdsQueryBuilder
-
-/** Построитель запроса получения категорий по идентификаторам. */
-class CategoryGetByIdsQueryBuilder implements ffi.Finalizable {
-  final ffi.Pointer<ffi.Void> _self;
-
-  static final _finalizer = ffi.NativeFinalizer(_CCategoryGetByIdsQueryBuilder_releasePtr);
-
-  CategoryGetByIdsQueryBuilder._raw(this._self);
-  factory CategoryGetByIdsQueryBuilder._create(ffi.Pointer<ffi.Void> self) {
-    final classObject = CategoryGetByIdsQueryBuilder._raw(self);
-    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
-    return classObject;
-  }
-
-  factory CategoryGetByIdsQueryBuilder.fromMessage(ClassMessage<CategoryGetByIdsQueryBuilder> message) {
-    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
-    return CategoryGetByIdsQueryBuilder._create(ptr);
-  }
-
-  /** Начать построение запроса получения категорий по идентификаторам. */
-  factory CategoryGetByIdsQueryBuilder(
-    List<RubricId> ids
-  ) {
-    var _a0 = ids._copyFromDartTo_CArray_CRubricId();
-    _CCategoryGetByIdsQueryBuilder res = _CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricId(_a0);
-    _a0._releaseIntermediate();
-    return CategoryGetByIdsQueryBuilder._create(res._impl);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is CategoryGetByIdsQueryBuilder &&
-    other.runtimeType == runtimeType &&
-    _CCategoryGetByIdsQueryBuilder_cg_objectIdentifier(this._self) == _CCategoryGetByIdsQueryBuilder_cg_objectIdentifier(other._self);
-
-  @override
-  int get hashCode {
-    final identifier = _CCategoryGetByIdsQueryBuilder_cg_objectIdentifier(this._self);
-    return identifier.hashCode;
-  }
-
-  // MARK: CategoryGetByIdsQueryBuilder: Methods
-
-  /**
-   Задать географический контекст запроса. Если не задан, то география будет определяться с помощью
-   LocationService.
-  */
-  CategoryGetByIdsQueryBuilder setGeoContext(
-    CategoryGeoContext? geoContext
-  )  {
-    var _a1 = geoContext._copyFromDartTo_COptional_CCategoryGeoContext();
-    _CCategoryGetByIdsQueryBuilder res = _CCategoryGetByIdsQueryBuilder_setGeoContext_COptional_CCategoryGeoContext(_CCategoryGetByIdsQueryBuilderMakeDefault().._impl=_self, _a1);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Задать локаль для запроса категорий. */
-  CategoryGetByIdsQueryBuilder setLocale(
-    Locale? locale
-  )  {
-    var _a1 = locale._copyFromDartTo_COptional_CLocale();
-    _CCategoryGetByIdsQueryBuilder res = _CCategoryGetByIdsQueryBuilder_setLocale_COptional_CLocale(_CCategoryGetByIdsQueryBuilderMakeDefault().._impl=_self, _a1);
-    _a1._releaseIntermediate();
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-  /** Сформировать запрос категорий. */
-  CategoryQuery build()  {
-    _CCategoryQuery res = _CCategoryGetByIdsQueryBuilder_build(_CCategoryGetByIdsQueryBuilderMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-}
-
-extension CategoryGetByIdsQueryBuilderToClassMessage on CategoryGetByIdsQueryBuilder {
-  ClassMessage<CategoryGetByIdsQueryBuilder> message() {
-    final res = (_CCategoryGetByIdsQueryBuilderMakeDefault().._impl=_self)._retain();
-    return ClassMessage<CategoryGetByIdsQueryBuilder>(res._impl.address, _CCategoryGetByIdsQueryBuilder_release);
-  }
-}
-
-// MARK: - CategoryGetByIdsQueryBuilder <-> CCategoryGetByIdsQueryBuilder
-
-final class _CCategoryGetByIdsQueryBuilder extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CCategoryGetByIdsQueryBuilderBasicFunctions on _CCategoryGetByIdsQueryBuilder {
-  void _releaseIntermediate() {
-    _CCategoryGetByIdsQueryBuilder_release(_impl);
-  }
-
-  _CCategoryGetByIdsQueryBuilder _retain() {
-    return _CCategoryGetByIdsQueryBuilder_retain(_impl);
-  }
-}
-
-extension _CCategoryGetByIdsQueryBuilderToDart on _CCategoryGetByIdsQueryBuilder {
-  CategoryGetByIdsQueryBuilder _toDart() {
-    return CategoryGetByIdsQueryBuilder._create(_retain()._impl);
-  }
-}
-
-
-extension _DartToCCategoryGetByIdsQueryBuilder on CategoryGetByIdsQueryBuilder {
-  _CCategoryGetByIdsQueryBuilder _copyFromDartTo_CCategoryGetByIdsQueryBuilder() {
-    return (_CCategoryGetByIdsQueryBuilderMakeDefault().._impl=_self)._retain();
-  }
-}
 // MARK: - ChangeType
 
 enum ChangeType {
@@ -22770,12 +21665,10 @@ class PackedSearchQuery implements ffi.Finalizable {
     res._releaseIntermediate();
     return t;
   }
-  /** Идентификаторы организаций. */
-  List<OrgId> get orgIds {
-    _CArray_COrgId res = _CPackedSearchQuery_orgIds(_CPackedSearchQueryMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
+  /** Идентификатор организации. */
+  OrgId? get orgId {
+    _COptional_COrgId res = _CPackedSearchQuery_orgId(_CPackedSearchQueryMakeDefault().._impl=_self);
+    return res._toDart();
   }
   /** Идентификаторы рубрик. */
   List<RubricId> get rubricIds {
@@ -22791,9 +21684,14 @@ class PackedSearchQuery implements ffi.Finalizable {
     res._releaseIntermediate();
     return t;
   }
-  /** Идентификаторы зданий. */
-  List<BuildingId> get buildingIds {
-    _CArray_CBuildingId res = _CPackedSearchQuery_buildingIds(_CPackedSearchQueryMakeDefault().._impl=_self);
+  /** Идентификатор здания. */
+  BuildingId? get buildingId {
+    _COptional_CBuildingId res = _CPackedSearchQuery_buildingId(_CPackedSearchQueryMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  /** Геометрия, ограничивающая область поиска. */
+  List<GeoPoint>? get spatialRestriction {
+    _COptional_CArray_CGeoPoint res = _CPackedSearchQuery_spatialRestriction(_CPackedSearchQueryMakeDefault().._impl=_self);
     final t = res._toDart();
     res._releaseIntermediate();
     return t;
@@ -22839,6 +21737,11 @@ class PackedSearchQuery implements ffi.Finalizable {
   /** Тип сортировки результатов. */
   SortingType get sortingType {
     _CSortingType res = _CPackedSearchQuery_sortingType(_CPackedSearchQueryMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  /** Центр для поискового запроса. */
+  GeoPoint? get geoPoint {
+    _COptional_CGeoPoint res = _CPackedSearchQuery_geoPoint(_CPackedSearchQueryMakeDefault().._impl=_self);
     return res._toDart();
   }
   /** Радиус поиска в метрах. */
@@ -23442,98 +22345,6 @@ extension _CArray_CGeometryBasicFunctions on _CArray_CGeometry {
   }
 }
 	
-// MARK: - GeoRect
-
-extension GeoRectIsGeoRectValid on GeoRect {
-  bool get isGeoRectValid {
-    var _a0 = this._copyFromDartTo_CGeoRect();
-    bool res = _CFunction_G_isGeoRectValid_With_CGeoRect(_a0);
-    return res;
-  }
-}
-// MARK: - GeoRect
-
-extension GeoRectContainsPoint on GeoRect {
-  bool containsPoint(
-    GeoPoint point
-  )  {
-    var _a0 = this._copyFromDartTo_CGeoRect();
-    var _a1 = point._copyFromDartTo_CGeoPoint();
-    bool res = _CFunction_G_containsPoint_With_CGeoRect_CGeoPoint(_a0, _a1);
-    return res;
-  }
-
-}
-// MARK: - GeoRect
-
-extension GeoRectContainsRect on GeoRect {
-  bool containsRect(
-    GeoRect rect2
-  )  {
-    var _a0 = this._copyFromDartTo_CGeoRect();
-    var _a1 = rect2._copyFromDartTo_CGeoRect();
-    bool res = _CFunction_G_containsRect_With_CGeoRect_CGeoRect(_a0, _a1);
-    return res;
-  }
-
-}
-// MARK: - GeoRect
-
-extension GeoRectExpandPoint on GeoRect {
-  GeoRect expandPoint(
-    GeoPoint point
-  )  {
-    var _a0 = this._copyFromDartTo_CGeoRect();
-    var _a1 = point._copyFromDartTo_CGeoPoint();
-    _CGeoRect res = _CFunction_G_expandPoint_With_CGeoRect_CGeoPoint(_a0, _a1);
-    return res._toDart();
-  }
-
-}
-// MARK: - GeoRect
-
-extension GeoRectExpandRect on GeoRect {
-  GeoRect expandRect(
-    GeoRect rect2
-  )  {
-    var _a0 = this._copyFromDartTo_CGeoRect();
-    var _a1 = rect2._copyFromDartTo_CGeoRect();
-    _CGeoRect res = _CFunction_G_expandRect_With_CGeoRect_CGeoRect(_a0, _a1);
-    return res._toDart();
-  }
-
-}
-// MARK: - GeoRect
-
-extension GeoRectIsDegenerate on GeoRect {
-  /**
-   Проверяет прямоугольник на вырожденность.
-   Если точки в прямоугольнике равны, то он вырождается в точку.
-   Вырожденный прямоугольник является корректным прямоугольником. Некорректный прямоугольник не является вырожденным.
-  */
-  bool get isDegenerate {
-    var _a0 = this._copyFromDartTo_CGeoRect();
-    bool res = _CFunction_G_isDegenerate_With_CGeoRect(_a0);
-    return res;
-  }
-}
-// MARK: - GeoRect
-
-extension GeoRectIntersects on GeoRect {
-  /**
-   Пересекаются ли прямоугольники, т.е. имеют общие точки.
-   Прямогольники, с общими точками лишь на границе, так же считаются пересекающимися.
-  */
-  bool intersects(
-    GeoRect rect2
-  )  {
-    var _a0 = this._copyFromDartTo_CGeoRect();
-    var _a1 = rect2._copyFromDartTo_CGeoRect();
-    bool res = _CFunction_G_intersects_With_CGeoRect_CGeoRect(_a0, _a1);
-    return res;
-  }
-
-}
 // MARK: - downloadData
 
 @internal
@@ -24919,47 +23730,6 @@ extension _CLabelingPriorityRelease on _CLabelingPriority {
   }
 }
 
-// MARK: - UniverseDrawingMode
-
-/** Режим отображения Universe. */
-enum UniverseDrawingMode {
-  /** Отображаем карту в плоском режиме. */
-  plain(0),
-  /** Отображаем карту в виде глобуса. */
-  sphere(1),
-  ;
-
-  const UniverseDrawingMode(this.rawValue);
-  final int rawValue;
-
-  static UniverseDrawingMode getByValue(int value) {
-    return UniverseDrawingMode.values.firstWhere((x) => x.rawValue == value);
-  }
-}
-
-
-final class _CUniverseDrawingMode extends ffi.Struct {
-  @ffi.Uint32()
-  external int rawValue;
-}
-
-extension _CUniverseDrawingModeBasicFunctions on _CUniverseDrawingMode {
-  void _releaseIntermediate() {
-  }
-}
-
-extension _CUniverseDrawingModeToDart on _CUniverseDrawingMode {
-  UniverseDrawingMode _toDart() {
-    return UniverseDrawingMode.getByValue(this.rawValue);
-  }
-}
-
-extension _DartTo_CUniverseDrawingMode on UniverseDrawingMode {
-  _CUniverseDrawingMode _copyFromDartTo_CUniverseDrawingMode() {
-    return _CUniverseDrawingModeMakeDefault()..rawValue = this.rawValue;
-  }
-}
-	
 // MARK: - ZIndex
 
 /** Индекс, задающий порядок отрисовки объектов в рамках слоя. */
@@ -29698,7 +28468,10 @@ class DgisSource extends Source implements ffi.Finalizable {
     return t;
   }
 
-  /** Создание источника, получающего реалистичные данные с серверов 2ГИС. */
+  /**
+   Создание источника, получающего реалистичные данные с серверов 2ГИС.
+   Источник всегда работает в режиме DgisSourceWorkingMode::Online.
+  */
   static Source createImmersiveDgisSource(
     Context context
   )  {
@@ -33662,8 +32435,8 @@ class StyleZoomFollowController extends FollowController implements ffi.Finaliza
     [Duration animationDuration = const Duration(milliseconds: 300)
     ]) {
     var _a0 = animationDuration._copyFromDartTo_CTimeInterval();
-    _CResult_CStyleZoomFollowController res = _CStyleZoomFollowController_C_createWith_CTimeInterval(_a0);
-    return StyleZoomFollowController._create(res._toCDart()._impl);
+    _CStyleZoomFollowController res = _CStyleZoomFollowController_C_createWith_CTimeInterval(_a0);
+    return StyleZoomFollowController._create(res._impl);
   }
 
   @override
@@ -33737,44 +32510,6 @@ extension _DartToCStyleZoomFollowController on StyleZoomFollowController {
     return (_CStyleZoomFollowControllerMakeDefault().._impl=_self)._retain();
   }
 }
-// MARK: - StyleZoomFollowController <-> _CResult_CStyleZoomFollowController
-
-final class _CResult_CStyleZoomFollowControllerImpl extends ffi.Union {
-  
-  external _CStyleZoomFollowController _value;
-  external _CError _error;
-}
-
-final class _CResult_CStyleZoomFollowController extends ffi.Struct {
-  external _CResult_CStyleZoomFollowControllerImpl _impl;
-  @ffi.Uint8()
-  external int _index;
-}
-
-extension _CResult_CStyleZoomFollowControllerBasicFunctions on _CResult_CStyleZoomFollowController {
-  void _releaseIntermediate() {
-    _CResult_CStyleZoomFollowController_release(this);
-  }
-}
-
-extension _CResult_CStyleZoomFollowControllerToDart on _CResult_CStyleZoomFollowController {
-  StyleZoomFollowController _toDart() {
-    if (this._index == 0) {
-      return this._impl._value._toDart();
-    } else {
-      throw this._impl._error._toDart();
-    }
-  }
-
-  _CStyleZoomFollowController _toCDart() {
-    if (this._index == 0) {
-      return this._impl._value;
-    } else {
-      throw this._impl._error._toDart();
-    }
-  }
-}
-	
 // MARK: - _StyleZoomToTiltRelationCpp
 
 /** Объект для описания зависимости угла наклона камеры от стилевого уровня масштабирования. */
@@ -34136,6 +32871,57 @@ extension _DartToCTrafficSource on TrafficSource {
     return (_CTrafficSourceMakeDefault().._impl=_self)._retain();
   }
 }
+// MARK: - RoadEventDisplayCategory
+
+/** Категория дорожного события для отображения на карте. */
+enum RoadEventDisplayCategory {
+  /** Камеры всех типов, в том числе и добавленные пользователем. */
+  camera(1),
+  /** Комментарии на дорогах. */
+  comment(2),
+  /** ДТП. */
+  accident(4),
+  /** Перекрытия дорог. */
+  roadRestriction(8),
+  /** Дорожные работы. */
+  roadWorks(16),
+  /** События категории "Другое". */
+  other(32),
+  /** Всегда отображать события, созданные текущим пользователем, вне зависимости от их категории. */
+  user(64),
+  ;
+
+  const RoadEventDisplayCategory(this.rawValue);
+  final int rawValue;
+
+  static RoadEventDisplayCategory getByValue(int value) {
+    return RoadEventDisplayCategory.values.firstWhere((x) => x.rawValue == value);
+  }
+}
+
+
+final class _CRoadEventDisplayCategory extends ffi.Struct {
+  @ffi.Uint32()
+  external int rawValue;
+}
+
+extension _CRoadEventDisplayCategoryBasicFunctions on _CRoadEventDisplayCategory {
+  void _releaseIntermediate() {
+  }
+}
+
+extension _CRoadEventDisplayCategoryToDart on _CRoadEventDisplayCategory {
+  RoadEventDisplayCategory _toDart() {
+    return RoadEventDisplayCategory.getByValue(this.rawValue);
+  }
+}
+
+extension _DartTo_CRoadEventDisplayCategory on RoadEventDisplayCategory {
+  _CRoadEventDisplayCategory _copyFromDartTo_CRoadEventDisplayCategory() {
+    return _CRoadEventDisplayCategoryMakeDefault()..rawValue = this.rawValue;
+  }
+}
+	
 // MARK: - RoadEventFilterData
 
 /** Данные о дорожном событии, используемые для фильтрации. */
@@ -34412,6 +33198,16 @@ extension _DartTo_CRoadEventFilter on RoadEventFilter {
 
 /** Интерфейс класса, управляющего отображением дорожных событий (tUGC) на карте. */
 class RoadEventSource extends Source implements ffi.Finalizable {
+  /** Получение текущих категорий событий, предоставляемых данным источником. */
+  EnumSet<RoadEventDisplayCategory> get visibleEvents {
+    _COptionSet_CRoadEventDisplayCategory res = _CRoadEventSource_getVisibleEvents(_CRoadEventSourceMakeDefault().._impl=_self);
+    return res._toDart();
+  }
+  set visibleEvents(EnumSet<RoadEventDisplayCategory> types) {
+    var _a1 = types._copyFromDartTo_COptionSet_CRoadEventDisplayCategory();
+    void res = _CRoadEventSource_setVisibleEvents_COptionSet_CRoadEventDisplayCategory(_CRoadEventSourceMakeDefault().._impl=_self, _a1);
+    return res;
+  }
   RoadEventFilter? get roadEventFilter {
     _COptional_CRoadEventFilter res = _CRoadEventSource_roadEventFilter(_CRoadEventSourceMakeDefault().._impl=_self);
     final t = res._toDart();
@@ -34458,9 +33254,9 @@ class RoadEventSource extends Source implements ffi.Finalizable {
     Context context
   ) {
     var _a0 = context._copyFromDartTo_CContext();
-    _CResult_CRoadEventSource res = _CRoadEventSource_C_createWith_CContext(_a0);
+    _CRoadEventSource res = _CRoadEventSource_C_createWith_CContext(_a0);
     _a0._releaseIntermediate();
-    return RoadEventSource._create(res._toCDart()._impl);
+    return RoadEventSource._create(res._impl);
   }
 
   @override
@@ -34531,233 +33327,6 @@ extension _DartToCRoadEventSource on RoadEventSource {
     return (_CRoadEventSourceMakeDefault().._impl=_self)._retain();
   }
 }
-// MARK: - RoadEventFilter? <-> _COptional_CRoadEventFilter
-
-final class _COptional_CRoadEventFilter extends ffi.Struct {
-  
-  external _CRoadEventFilter value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CRoadEventFilterBasicFunctions on _COptional_CRoadEventFilter {
-  void _releaseIntermediate() {
-    _COptional_CRoadEventFilter_release(this);
-  }
-}
-
-extension _COptional_CRoadEventFilterToDart on _COptional_CRoadEventFilter {
-  RoadEventFilter? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CRoadEventFilter on RoadEventFilter? {
-  _COptional_CRoadEventFilter _copyFromDartTo_COptional_CRoadEventFilter() {
-    final cOptional = _COptional_CRoadEventFilterMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CRoadEventFilter();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
-// MARK: - RoadEventSource <-> _CResult_CRoadEventSource
-
-final class _CResult_CRoadEventSourceImpl extends ffi.Union {
-  
-  external _CRoadEventSource _value;
-  external _CError _error;
-}
-
-final class _CResult_CRoadEventSource extends ffi.Struct {
-  external _CResult_CRoadEventSourceImpl _impl;
-  @ffi.Uint8()
-  external int _index;
-}
-
-extension _CResult_CRoadEventSourceBasicFunctions on _CResult_CRoadEventSource {
-  void _releaseIntermediate() {
-    _CResult_CRoadEventSource_release(this);
-  }
-}
-
-extension _CResult_CRoadEventSourceToDart on _CResult_CRoadEventSource {
-  RoadEventSource _toDart() {
-    if (this._index == 0) {
-      return this._impl._value._toDart();
-    } else {
-      throw this._impl._error._toDart();
-    }
-  }
-
-  _CRoadEventSource _toCDart() {
-    if (this._index == 0) {
-      return this._impl._value;
-    } else {
-      throw this._impl._error._toDart();
-    }
-  }
-}
-	
-// MARK: - DefaultRoadEventFilter
-
-/**
- Фабрика для создания стандартных временных фильтров дорожных событий.
-
- - see: IDefaultRoadEventFilter.
-*/
-class DefaultRoadEventFilter implements ffi.Finalizable {
-  final ffi.Pointer<ffi.Void> _self;
-
-  static final _finalizer = ffi.NativeFinalizer(_CDefaultRoadEventFilter_releasePtr);
-
-  DefaultRoadEventFilter._raw(this._self);
-  factory DefaultRoadEventFilter._create(ffi.Pointer<ffi.Void> self) {
-    final classObject = DefaultRoadEventFilter._raw(self);
-    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
-    return classObject;
-  }
-
-  factory DefaultRoadEventFilter.fromMessage(ClassMessage<DefaultRoadEventFilter> message) {
-    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
-    return DefaultRoadEventFilter._create(ptr);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is DefaultRoadEventFilter &&
-    other.runtimeType == runtimeType &&
-    _CDefaultRoadEventFilter_cg_objectIdentifier(this._self) == _CDefaultRoadEventFilter_cg_objectIdentifier(other._self);
-
-  @override
-  int get hashCode {
-    final identifier = _CDefaultRoadEventFilter_cg_objectIdentifier(this._self);
-    return identifier.hashCode;
-  }
-
-  // MARK: CDefaultRoadEventFilter: Static Methods
-
-  /**
-   Создает фильтр отображаемых дорожных событий на карте.
-  
-   - Parameter context: Контекст.
-   - Parameter displayCategories: Категории событий, которые нужно отображать на карте.
-   Если не задано — фильтрация по категориям не применяется.
-   - Parameter startTimeCutoff: Максимально допустимое время начала события относительно текущего момента.
-   События с start_time позже этого порога будут скрыты.
-   Например, +1d — скрыть события, которые начнутся позже чем через сутки.
-   События без start_time не фильтруются.
-   Если не задано — фильтрация по времени начала не применяется.
-  */
-  static RoadEventFilter create(
-    Context context,
-    EnumSet<RoadEventDisplayCategory>? displayCategories,
-    Duration? startTimeCutoff
-  )  {
-    var _a0 = context._copyFromDartTo_CContext();
-    var _a1 = displayCategories._copyFromDartTo_COptional_COptionSet_CRoadEventDisplayCategory();
-    var _a2 = startTimeCutoff._copyFromDartTo_COptional_CTimeInterval();
-    _CRoadEventFilter res = _CDefaultRoadEventFilter_S_create_CContext_COptional_COptionSet_CRoadEventDisplayCategory_COptional_CTimeInterval(_a0, _a1, _a2);
-    _a0._releaseIntermediate();
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-
-}
-
-extension DefaultRoadEventFilterToClassMessage on DefaultRoadEventFilter {
-  ClassMessage<DefaultRoadEventFilter> message() {
-    final res = (_CDefaultRoadEventFilterMakeDefault().._impl=_self)._retain();
-    return ClassMessage<DefaultRoadEventFilter>(res._impl.address, _CDefaultRoadEventFilter_release);
-  }
-}
-
-// MARK: - DefaultRoadEventFilter <-> CDefaultRoadEventFilter
-
-final class _CDefaultRoadEventFilter extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CDefaultRoadEventFilterBasicFunctions on _CDefaultRoadEventFilter {
-  void _releaseIntermediate() {
-    _CDefaultRoadEventFilter_release(_impl);
-  }
-
-  _CDefaultRoadEventFilter _retain() {
-    return _CDefaultRoadEventFilter_retain(_impl);
-  }
-}
-
-extension _CDefaultRoadEventFilterToDart on _CDefaultRoadEventFilter {
-  DefaultRoadEventFilter _toDart() {
-    return DefaultRoadEventFilter._create(_retain()._impl);
-  }
-}
-
-
-extension _DartToCDefaultRoadEventFilter on DefaultRoadEventFilter {
-  _CDefaultRoadEventFilter _copyFromDartTo_CDefaultRoadEventFilter() {
-    return (_CDefaultRoadEventFilterMakeDefault().._impl=_self)._retain();
-  }
-}
-// MARK: - RoadEventDisplayCategory
-
-/** Категория дорожного события для отображения на карте. */
-enum RoadEventDisplayCategory {
-  /** Камеры всех типов, в том числе и добавленные пользователем. */
-  camera(1),
-  /** Комментарии на дорогах. */
-  comment(2),
-  /** ДТП. */
-  accident(4),
-  /** Перекрытия дорог. */
-  roadRestriction(8),
-  /** Дорожные работы. */
-  roadWorks(16),
-  /** События категории "Другое". */
-  other(32),
-  /** Всегда отображать события, созданные текущим пользователем, вне зависимости от их категории. */
-  user(64),
-  ;
-
-  const RoadEventDisplayCategory(this.rawValue);
-  final int rawValue;
-
-  static RoadEventDisplayCategory getByValue(int value) {
-    return RoadEventDisplayCategory.values.firstWhere((x) => x.rawValue == value);
-  }
-}
-
-
-final class _CRoadEventDisplayCategory extends ffi.Struct {
-  @ffi.Uint32()
-  external int rawValue;
-}
-
-extension _CRoadEventDisplayCategoryBasicFunctions on _CRoadEventDisplayCategory {
-  void _releaseIntermediate() {
-  }
-}
-
-extension _CRoadEventDisplayCategoryToDart on _CRoadEventDisplayCategory {
-  RoadEventDisplayCategory _toDart() {
-    return RoadEventDisplayCategory.getByValue(this.rawValue);
-  }
-}
-
-extension _DartTo_CRoadEventDisplayCategory on RoadEventDisplayCategory {
-  _CRoadEventDisplayCategory _copyFromDartTo_CRoadEventDisplayCategory() {
-    return _CRoadEventDisplayCategoryMakeDefault()..rawValue = this.rawValue;
-  }
-}
-	
 // MARK: - EnumSet<RoadEventDisplayCategory>
 
 class RoadEventDisplayCategoryEnumSet extends EnumSet<RoadEventDisplayCategory> {
@@ -34943,6 +33512,144 @@ extension _DartTo_COptionSet_CRoadEventDisplayCategory on EnumSet<RoadEventDispl
   }
 }
 	
+// MARK: - RoadEventFilter? <-> _COptional_CRoadEventFilter
+
+final class _COptional_CRoadEventFilter extends ffi.Struct {
+  
+  external _CRoadEventFilter value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CRoadEventFilterBasicFunctions on _COptional_CRoadEventFilter {
+  void _releaseIntermediate() {
+    _COptional_CRoadEventFilter_release(this);
+  }
+}
+
+extension _COptional_CRoadEventFilterToDart on _COptional_CRoadEventFilter {
+  RoadEventFilter? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CRoadEventFilter on RoadEventFilter? {
+  _COptional_CRoadEventFilter _copyFromDartTo_COptional_CRoadEventFilter() {
+    final cOptional = _COptional_CRoadEventFilterMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CRoadEventFilter();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
+// MARK: - DefaultRoadEventFilter
+
+/**
+ Фабрика для создания стандартных временных фильтров дорожных событий.
+
+ - see: IDefaultRoadEventFilter.
+*/
+class DefaultRoadEventFilter implements ffi.Finalizable {
+  final ffi.Pointer<ffi.Void> _self;
+
+  static final _finalizer = ffi.NativeFinalizer(_CDefaultRoadEventFilter_releasePtr);
+
+  DefaultRoadEventFilter._raw(this._self);
+  factory DefaultRoadEventFilter._create(ffi.Pointer<ffi.Void> self) {
+    final classObject = DefaultRoadEventFilter._raw(self);
+    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
+    return classObject;
+  }
+
+  factory DefaultRoadEventFilter.fromMessage(ClassMessage<DefaultRoadEventFilter> message) {
+    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
+    return DefaultRoadEventFilter._create(ptr);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is DefaultRoadEventFilter &&
+    other.runtimeType == runtimeType &&
+    _CDefaultRoadEventFilter_cg_objectIdentifier(this._self) == _CDefaultRoadEventFilter_cg_objectIdentifier(other._self);
+
+  @override
+  int get hashCode {
+    final identifier = _CDefaultRoadEventFilter_cg_objectIdentifier(this._self);
+    return identifier.hashCode;
+  }
+
+  // MARK: CDefaultRoadEventFilter: Static Methods
+
+  /**
+   Создает фильтр отображаемых дорожных событий на карте.
+  
+   - Parameter context: Контекст.
+   - Parameter displayCategories: Категории событий, которые нужно отображать на карте.
+   Если не задано — фильтрация по категориям не применяется.
+   - Parameter startTimeCutoff: Максимально допустимое время начала события относительно текущего момента.
+   События с start_time позже этого порога будут скрыты.
+   Например, +1d — скрыть события, которые начнутся позже чем через сутки.
+   События без start_time не фильтруются.
+   Если не задано — фильтрация по времени начала не применяется.
+  */
+  static RoadEventFilter create(
+    Context context,
+    EnumSet<RoadEventDisplayCategory>? displayCategories,
+    Duration? startTimeCutoff
+  )  {
+    var _a0 = context._copyFromDartTo_CContext();
+    var _a1 = displayCategories._copyFromDartTo_COptional_COptionSet_CRoadEventDisplayCategory();
+    var _a2 = startTimeCutoff._copyFromDartTo_COptional_CTimeInterval();
+    _CRoadEventFilter res = _CDefaultRoadEventFilter_S_create_CContext_COptional_COptionSet_CRoadEventDisplayCategory_COptional_CTimeInterval(_a0, _a1, _a2);
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+}
+
+extension DefaultRoadEventFilterToClassMessage on DefaultRoadEventFilter {
+  ClassMessage<DefaultRoadEventFilter> message() {
+    final res = (_CDefaultRoadEventFilterMakeDefault().._impl=_self)._retain();
+    return ClassMessage<DefaultRoadEventFilter>(res._impl.address, _CDefaultRoadEventFilter_release);
+  }
+}
+
+// MARK: - DefaultRoadEventFilter <-> CDefaultRoadEventFilter
+
+final class _CDefaultRoadEventFilter extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> _impl;
+}
+
+extension _CDefaultRoadEventFilterBasicFunctions on _CDefaultRoadEventFilter {
+  void _releaseIntermediate() {
+    _CDefaultRoadEventFilter_release(_impl);
+  }
+
+  _CDefaultRoadEventFilter _retain() {
+    return _CDefaultRoadEventFilter_retain(_impl);
+  }
+}
+
+extension _CDefaultRoadEventFilterToDart on _CDefaultRoadEventFilter {
+  DefaultRoadEventFilter _toDart() {
+    return DefaultRoadEventFilter._create(_retain()._impl);
+  }
+}
+
+
+extension _DartToCDefaultRoadEventFilter on DefaultRoadEventFilter {
+  _CDefaultRoadEventFilter _copyFromDartTo_CDefaultRoadEventFilter() {
+    return (_CDefaultRoadEventFilterMakeDefault().._impl=_self)._retain();
+  }
+}
 // MARK: - EnumSet<RoadEventDisplayCategory>? <-> _COptional_COptionSet_CRoadEventDisplayCategory
 
 final class _COptional_COptionSet_CRoadEventDisplayCategory extends ffi.Struct {
@@ -38055,23 +36762,6 @@ class Map implements ffi.Finalizable {
     void res = _CMap_setGraphicsPreset_COptional_CGraphicsPreset(_CMapMakeDefault().._impl=_self, _a1);
     return res;
   }
-  /** Режим отображения Universe. */
-  StatefulChannel<UniverseDrawingMode> get universeDrawingModeChannel {
-    _CStatefulChannel_CUniverseDrawingMode res = _CMap_universeDrawingModeChannel(_CMapMakeDefault().._impl=_self);
-    final t = res._toDart();
-    res._releaseIntermediate();
-    return t;
-  }
-  /** Режим отображения Universe. */
-  UniverseDrawingMode get universeDrawingMode {
-    _CUniverseDrawingMode res = _CMap_universeDrawingMode(_CMapMakeDefault().._impl=_self);
-    return res._toDart();
-  }
-  set universeDrawingMode(UniverseDrawingMode drawingMode) {
-    var _a1 = drawingMode._copyFromDartTo_CUniverseDrawingMode();
-    void res = _CMap_setUniverseDrawingMode_CUniverseDrawingMode(_CMapMakeDefault().._impl=_self, _a1);
-    return res;
-  }
 
   static final _finalizer = ffi.NativeFinalizer(_CMap_releasePtr);
 
@@ -39545,97 +38235,6 @@ extension _DartTo_COptional_CGraphicsPreset on GraphicsPreset? {
     return cOptional;
   }
 }
-// MARK: - StatefulChannel<UniverseDrawingMode> <-> _CStatefulChannel_CUniverseDrawingMode
-
-class _CStatefulChannel_CUniverseDrawingModeImpl extends StatefulChannel<UniverseDrawingMode> {
-  static int instanceCounter = 0;
-  static final instanceMap = <int, StreamController<UniverseDrawingMode>>{};
-
-  final _CStatefulChannel_CUniverseDrawingMode _channel;
-
-  _CStatefulChannel_CUniverseDrawingModeImpl(this._channel);
-
-  @override
-  UniverseDrawingMode get value {
-    return this._channel._getter();
-  }
-
-  static void valueFunction(_CUniverseDrawingMode cValue, int instanceId) {
-    final instance = instanceMap[instanceId];
-    if (instance != null) {
-      instance.add(cValue._toDart());
-    }
-    
-  }
-
-  @override
-  StreamSubscription<UniverseDrawingMode> listen(void onData(UniverseDrawingMode event)?,
-      {Function? onError, void onDone()?, bool? cancelOnError}) {
-    final instanceId = instanceCounter;
-    instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
-    final streamController = new StreamController<UniverseDrawingMode>(
-      onCancel: () {
-        instanceMap.remove(instanceId);
-        try {
-          cancellable._cancel();
-        } finally {
-          valueFunctionCallable.close();
-        }
-      },
-    );
-    instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
-    cCancel._releaseIntermediate();
-    return streamController.stream.listen(
-      onData,
-      onError: onError,
-      onDone: onDone,
-      cancelOnError: cancelOnError
-    );
-  }
-}
-
-final class _CStatefulChannel_CUniverseDrawingMode extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CStatefulChannel_CUniverseDrawingModeBasicFunctions on _CStatefulChannel_CUniverseDrawingMode {
-  void _releaseIntermediate() {
-    _CStatefulChannel_CUniverseDrawingMode_release(this);
-  }
-
-  _CStatefulChannel_CUniverseDrawingMode _retain() {
-    return _CStatefulChannel_CUniverseDrawingMode_retain(this);
-  }
-
-  UniverseDrawingMode _getter() {
-    final cValue = _CStatefulChannel_CUniverseDrawingModeGetCurrentValue(this);
-    final res = cValue._toDart();
-    
-    return res;
-  }
-
-  _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)> callback) {
-    return _CStatefulChannel_CUniverseDrawingModeConnect(this, instanceId, callback.nativeFunction);
-  }
-}
-
-extension _CStatefulChannel_CUniverseDrawingModeToDart on _CStatefulChannel_CUniverseDrawingMode {
-  StatefulChannel<UniverseDrawingMode> _toDart() {
-    return _CStatefulChannel_CUniverseDrawingModeImpl(this._retain());
-  }
-}
-
-extension _DartTo_CStatefulChannel_CUniverseDrawingMode on StatefulChannel<UniverseDrawingMode> {
-  _CStatefulChannel_CUniverseDrawingMode _copyFromDartTo_CStatefulChannel_CUniverseDrawingMode() {
-    return _CStatefulChannel_CUniverseDrawingModeMakeDefault();
-  }
-}
-	
 // MARK: - CancelableOperation<RenderedObjectInfo?> <-> _CFuture_COptional_CRenderedObjectInfo
 
 final class _CFuture_COptional_CRenderedObjectInfo extends ffi.Struct {
@@ -44810,50 +43409,12 @@ CameraPosition zoomOutToFitForObjects(
 
 /** Получаем стандартную зависимость максимального угла наклона от стилевого уровня масштабирования. */
 StyleZoomToTiltRelation createDefaultMaxTiltRestriction(){
-  _CResult_CStyleZoomToTiltRelation res = _CFunction_G_createDefaultMaxTiltRestriction();
+  _CStyleZoomToTiltRelation res = _CFunction_G_createDefaultMaxTiltRestriction();
   final t = res._toDart();
   res._releaseIntermediate();
   return t;
 }
 
-// MARK: - StyleZoomToTiltRelation <-> _CResult_CStyleZoomToTiltRelation
-
-final class _CResult_CStyleZoomToTiltRelationImpl extends ffi.Union {
-  
-  external _CStyleZoomToTiltRelation _value;
-  external _CError _error;
-}
-
-final class _CResult_CStyleZoomToTiltRelation extends ffi.Struct {
-  external _CResult_CStyleZoomToTiltRelationImpl _impl;
-  @ffi.Uint8()
-  external int _index;
-}
-
-extension _CResult_CStyleZoomToTiltRelationBasicFunctions on _CResult_CStyleZoomToTiltRelation {
-  void _releaseIntermediate() {
-    _CResult_CStyleZoomToTiltRelation_release(this);
-  }
-}
-
-extension _CResult_CStyleZoomToTiltRelationToDart on _CResult_CStyleZoomToTiltRelation {
-  StyleZoomToTiltRelation _toDart() {
-    if (this._index == 0) {
-      return this._impl._value._toDart();
-    } else {
-      throw this._impl._error._toDart();
-    }
-  }
-
-  _CStyleZoomToTiltRelation _toCDart() {
-    if (this._index == 0) {
-      return this._impl._value;
-    } else {
-      throw this._impl._error._toDart();
-    }
-  }
-}
-	
 // MARK: - createDefaultStyleZoomToTiltRelation
 
 /**
@@ -44861,7 +43422,7 @@ extension _CResult_CStyleZoomToTiltRelationToDart on _CResult_CStyleZoomToTiltRe
  для стандартного контроллера слежения за наклоном.
 */
 StyleZoomToTiltRelation createDefaultStyleZoomToTiltRelation(){
-  _CResult_CStyleZoomToTiltRelation res = _CFunction_G_createDefaultStyleZoomToTiltRelation();
+  _CStyleZoomToTiltRelation res = _CFunction_G_createDefaultStyleZoomToTiltRelation();
   final t = res._toDart();
   res._releaseIntermediate();
   return t;
@@ -44893,7 +43454,7 @@ StyleZoomToTiltRelation createStyleZoomToTiltRelation(
   core.Map<StyleZoom, Tilt> points
 ){
   var _a0 = points._copyFromDartTo_CDictionary_CStyleZoom_CTilt();
-  _CResult_CStyleZoomToTiltRelation res = _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTilt(_a0);
+  _CStyleZoomToTiltRelation res = _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTilt(_a0);
   _a0._releaseIntermediate();
   final t = res._toDart();
   res._releaseIntermediate();
@@ -45678,78 +44239,6 @@ extension _DartTo_COptional_CCameraPosition on CameraPosition? {
     return cOptional;
   }
 }
-// MARK: - CameraZoomRestrictions? <-> _COptional_CCameraZoomRestrictions
-
-final class _COptional_CCameraZoomRestrictions extends ffi.Struct {
-  
-  external _CCameraZoomRestrictions value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CCameraZoomRestrictionsBasicFunctions on _COptional_CCameraZoomRestrictions {
-  void _releaseIntermediate() {
-    
-  }
-}
-
-extension _COptional_CCameraZoomRestrictionsToDart on _COptional_CCameraZoomRestrictions {
-  CameraZoomRestrictions? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CCameraZoomRestrictions on CameraZoomRestrictions? {
-  _COptional_CCameraZoomRestrictions _copyFromDartTo_COptional_CCameraZoomRestrictions() {
-    final cOptional = _COptional_CCameraZoomRestrictionsMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CCameraZoomRestrictions();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
-// MARK: - File? <-> _COptional_CFile
-
-final class _COptional_CFile extends ffi.Struct {
-  
-  external _CFile value;
-  @ffi.Bool()
-  external bool hasValue;
-}
-
-extension _COptional_CFileBasicFunctions on _COptional_CFile {
-  void _releaseIntermediate() {
-    _COptional_CFile_release(this);
-  }
-}
-
-extension _COptional_CFileToDart on _COptional_CFile {
-  File? _toDart() {
-    if (!this.hasValue) {
-      return null;
-    }
-    return this.value._toDart();
-  }
-}
-
-extension _DartTo_COptional_CFile on File? {
-  _COptional_CFile _copyFromDartTo_COptional_CFile() {
-    final cOptional = _COptional_CFileMakeDefault();
-    if (this != null) {
-      cOptional.value = this!._copyFromDartTo_CFile();
-      cOptional.hasValue = true;
-    } else {
-      cOptional.hasValue = false;
-    }
-    return cOptional;
-  }
-}
 // MARK: - Fps? <-> _COptional_CFps
 
 final class _COptional_CFps extends ffi.Struct {
@@ -45791,14 +44280,10 @@ extension _DartTo_COptional_CFps on Fps? {
 class MapControllerOptions {
   /** Начальная позиция камеры. Не задано: позиция по умолчанию. */
   final CameraPosition? position;
-  /** Начальный допустимый диапазон изменения уровня масштабирования. Не задано: диапазон по умолчанию. */
-  final CameraZoomRestrictions? zoomRestrictions;
   /** Источники данных, добавляемые на карту при создании. */
   final List<Source> sources;
   /** Атрибуты карты, применяемые при создании. */
   final core.Map<String, AttributeValue> attributes;
-  /** Файл стиля карты. Не задано: используется стиль по умолчанию. */
-  final File? styleFile;
   /** Множитель размера иконок и шрифтов. Не задано: множитель не применяется. */
   final double? fontIconSizeMultiplier;
   /** Графический пресет качества. Не задано: пресет по умолчанию. */
@@ -45810,10 +44295,8 @@ class MapControllerOptions {
 
   const MapControllerOptions({
     this.position = null,
-    this.zoomRestrictions = null,
     this.sources = const [],
     this.attributes = const {},
-    this.styleFile = null,
     this.fontIconSizeMultiplier = null,
     this.graphicsPreset = null,
     this.maxFps = null,
@@ -45822,10 +44305,8 @@ class MapControllerOptions {
 
   MapControllerOptions copyWith({
     Optional<CameraPosition?>? position,
-    Optional<CameraZoomRestrictions?>? zoomRestrictions,
     List<Source>? sources,
     core.Map<String, AttributeValue>? attributes,
-    Optional<File?>? styleFile,
     Optional<double?>? fontIconSizeMultiplier,
     Optional<GraphicsPreset?>? graphicsPreset,
     Optional<Fps?>? maxFps,
@@ -45833,10 +44314,8 @@ class MapControllerOptions {
   }) {
     return MapControllerOptions(
       position: position != null ? position.value : this.position,
-      zoomRestrictions: zoomRestrictions != null ? zoomRestrictions.value : this.zoomRestrictions,
       sources: sources ?? this.sources,
       attributes: attributes ?? this.attributes,
-      styleFile: styleFile != null ? styleFile.value : this.styleFile,
       fontIconSizeMultiplier: fontIconSizeMultiplier != null ? fontIconSizeMultiplier.value : this.fontIconSizeMultiplier,
       graphicsPreset: graphicsPreset != null ? graphicsPreset.value : this.graphicsPreset,
       maxFps: maxFps != null ? maxFps.value : this.maxFps,
@@ -45848,10 +44327,8 @@ class MapControllerOptions {
     identical(this, other) || other is MapControllerOptions &&
     other.runtimeType == runtimeType &&
     other.position == position &&
-    other.zoomRestrictions == zoomRestrictions &&
     other.sources == sources &&
     other.attributes == attributes &&
-    other.styleFile == styleFile &&
     other.fontIconSizeMultiplier == fontIconSizeMultiplier &&
     other.graphicsPreset == graphicsPreset &&
     other.maxFps == maxFps &&
@@ -45859,20 +44336,16 @@ class MapControllerOptions {
 
   @override
   int get hashCode {
-    return Object.hash(position, zoomRestrictions, sources, attributes, styleFile, fontIconSizeMultiplier, graphicsPreset, maxFps, powerSavingMaxFps);
+    return Object.hash(position, sources, attributes, fontIconSizeMultiplier, graphicsPreset, maxFps, powerSavingMaxFps);
   }
 
 }
 final class _CMapControllerOptions extends ffi.Struct {
   external _COptional_CCameraPosition position;
 
-  external _COptional_CCameraZoomRestrictions zoomRestrictions;
-
   external _CArray_CSource sources;
 
   external _CDictionary_CString_CAttributeValue attributes;
-
-  external _COptional_CFile styleFile;
 
   external _COptional_float fontIconSizeMultiplier;
 
@@ -45889,10 +44362,8 @@ extension _CMapControllerOptionsToDart on _CMapControllerOptions {
   MapControllerOptions _toDart() {
     return MapControllerOptions(
       position: this.position._toDart(),
-      zoomRestrictions: this.zoomRestrictions._toDart(),
       sources: this.sources._toDart(),
       attributes: this.attributes._toDart(),
-      styleFile: this.styleFile._toDart(),
       fontIconSizeMultiplier: this.fontIconSizeMultiplier._toDart(),
       graphicsPreset: this.graphicsPreset._toDart(),
       maxFps: this.maxFps._toDart(),
@@ -45905,10 +44376,8 @@ extension _DartTo_CMapControllerOptions on MapControllerOptions {
   _CMapControllerOptions _copyFromDartTo_CMapControllerOptions() {
     final res = _CMapControllerOptionsMakeDefault();
     res.position = this.position._copyFromDartTo_COptional_CCameraPosition();
-    res.zoomRestrictions = this.zoomRestrictions._copyFromDartTo_COptional_CCameraZoomRestrictions();
     res.sources = this.sources._copyFromDartTo_CArray_CSource();
     res.attributes = this.attributes._copyFromDartTo_CDictionary_CString_CAttributeValue();
-    res.styleFile = this.styleFile._copyFromDartTo_COptional_CFile();
     res.fontIconSizeMultiplier = this.fontIconSizeMultiplier._copyFromDartTo_COptional_float();
     res.graphicsPreset = this.graphicsPreset._copyFromDartTo_COptional_CGraphicsPreset();
     res.maxFps = this.maxFps._copyFromDartTo_COptional_CFps();
@@ -45920,7 +44389,6 @@ extension _CMapControllerOptionsRelease on _CMapControllerOptions {
   void _releaseIntermediate() {
     sources._releaseIntermediate();
     attributes._releaseIntermediate();
-    styleFile._releaseIntermediate();
   }
 }
 
@@ -46893,9 +45361,9 @@ class ScalingKinematicSettings {
 
   const ScalingKinematicSettings({
     this.enabled = true,
-    this.decelerationCoefficient = 14,
-    this.maxInitialForwardZoomSpeed = 14,
-    this.zoomThreshold = 0.05000000074505806
+    this.decelerationCoefficient = 8,
+    this.maxInitialForwardZoomSpeed = 30,
+    this.zoomThreshold = 0.20000000298023224
   });
 
   ScalingKinematicSettings copyWith({
@@ -47227,10 +45695,10 @@ class RotationKinematicSettings {
 
   const RotationKinematicSettings({
     this.enabled = true,
-    this.decelerationCoefficient = 10,
-    this.maxInitialForwardAngularSpeed = 5,
-    this.initialBackwardAngularSpeed = 0.4000000059604645,
-    this.angleThreshold = 0.05000000074505806
+    this.decelerationCoefficient = 4,
+    this.maxInitialForwardAngularSpeed = 10,
+    this.initialBackwardAngularSpeed = 0.33000001311302185,
+    this.angleThreshold = 0.20000000298023224
   });
 
   RotationKinematicSettings copyWith({
@@ -47419,32 +45887,32 @@ class MultiTouchRecognizeSettings {
    Порог сдвига взвешенного среднего точек, в миллиметрах, преодоление которого
    говорит о начале сдвига несколькими пальцами.
   */
-  final double multiTouchShiftThresholdMm;
+  final double multitouchShiftThresholdMm;
 
-  const MultiTouchRecognizeSettings([this.multiTouchShiftThresholdMm = 7]);
+  const MultiTouchRecognizeSettings([this.multitouchShiftThresholdMm = 7]);
 
   MultiTouchRecognizeSettings copyWith({
-    double? multiTouchShiftThresholdMm
+    double? multitouchShiftThresholdMm
   }) {
     return MultiTouchRecognizeSettings(
-      multiTouchShiftThresholdMm ?? this.multiTouchShiftThresholdMm
+      multitouchShiftThresholdMm ?? this.multitouchShiftThresholdMm
     );
   }
   @override
   bool operator ==(Object other) =>
     identical(this, other) || other is MultiTouchRecognizeSettings &&
     other.runtimeType == runtimeType &&
-    other.multiTouchShiftThresholdMm == multiTouchShiftThresholdMm;
+    other.multitouchShiftThresholdMm == multitouchShiftThresholdMm;
 
   @override
   int get hashCode {
-    return multiTouchShiftThresholdMm.hashCode;
+    return multitouchShiftThresholdMm.hashCode;
   }
 
 }
 final class _CMultiTouchRecognizeSettings extends ffi.Struct {
   @ffi.Float()
-  external double multiTouchShiftThresholdMm;
+  external double multitouchShiftThresholdMm;
 
 }
 // MARK: - MultiTouchRecognizeSettings <-> _CMultiTouchRecognizeSettings
@@ -47452,7 +45920,7 @@ final class _CMultiTouchRecognizeSettings extends ffi.Struct {
 extension _CMultiTouchRecognizeSettingsToDart on _CMultiTouchRecognizeSettings {
   MultiTouchRecognizeSettings _toDart() {
     return MultiTouchRecognizeSettings(
-      this.multiTouchShiftThresholdMm
+      this.multitouchShiftThresholdMm
     );
   }
 }
@@ -47460,7 +45928,7 @@ extension _CMultiTouchRecognizeSettingsToDart on _CMultiTouchRecognizeSettings {
 extension _DartTo_CMultiTouchRecognizeSettings on MultiTouchRecognizeSettings {
   _CMultiTouchRecognizeSettings _copyFromDartTo_CMultiTouchRecognizeSettings() {
     final res = _CMultiTouchRecognizeSettingsMakeDefault();
-    res.multiTouchShiftThresholdMm = this.multiTouchShiftThresholdMm;
+    res.multitouchShiftThresholdMm = this.multitouchShiftThresholdMm;
     return res;
   }
 }
@@ -47694,10 +46162,10 @@ class TiltKinematicSettings {
     this.enabled = true,
     this.decelerationCoefficient = 7,
     this.initialForwardSpeedMultiplier = 0.699999988079071,
-    this.maxInitialForwardAngularSpeed = 50,
-    this.minTiltAdditionalBorder = const Tilt(0),
-    this.maxTiltAdditionalBorder = const Tilt(3),
-    this.tiltThreshold = 0.03999999910593033
+    this.maxInitialForwardAngularSpeed = 3,
+    this.minTiltAdditionalBorder = const Tilt(10),
+    this.maxTiltAdditionalBorder = const Tilt(10),
+    this.tiltThreshold = 0.08500000089406967
   });
 
   TiltKinematicSettings copyWith({
@@ -48045,8 +46513,8 @@ class GestureManager implements ffi.Finalizable {
     res._releaseIntermediate();
     return t;
   }
-  MultiTouchGestureSettings get multiTouchShiftSettings {
-    _CMultiTouchGestureSettings res = _CGestureManager_multiTouchShiftSettings(_CGestureManagerMakeDefault().._impl=_self);
+  MultiTouchGestureSettings get multitouchShiftSettings {
+    _CMultiTouchGestureSettings res = _CGestureManager_multitouchShiftSettings(_CGestureManagerMakeDefault().._impl=_self);
     final t = res._toDart();
     res._releaseIntermediate();
     return t;
@@ -52621,6 +51089,10 @@ late final _CFile_retain = _CFile_retainPtr.asFunction<_CFile Function(ffi.Point
 late final _CFileMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFile Function()>>('CFileMakeDefault');
 late final _CFileMakeDefault = _CFileMakeDefaultPtr.asFunction<_CFile Function()>();
 
+
+late final _CGeoRectMakeDefaultPtr = _lookup<ffi.NativeFunction<_CGeoRect Function()>>('CGeoRectMakeDefault');
+late final _CGeoRectMakeDefault = _CGeoRectMakeDefaultPtr.asFunction<_CGeoRect Function()>();
+
 late final _CFunction_G_calculateBearing_With_CGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFunction<_CBearing Function(_CGeoPoint, _CGeoPoint)>>('CFunction_G_calculateBearing_With_CGeoPoint_CGeoPoint');
 late final _CFunction_G_calculateBearing_With_CGeoPoint_CGeoPoint = _CFunction_G_calculateBearing_With_CGeoPoint_CGeoPointPtr.asFunction<_CBearing Function(_CGeoPoint, _CGeoPoint)>();
 late final _CFunction_G_calculateDistance_With_CGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFunction<ffi.Double Function(_CGeoPoint, _CGeoPoint)>>('CFunction_G_calculateDistance_With_CGeoPoint_CGeoPoint');
@@ -52629,6 +51101,20 @@ late final _CFunction_G_move_With_CGeoPoint_CBearing_doublePtr = _lookup<ffi.Nat
 late final _CFunction_G_move_With_CGeoPoint_CBearing_double = _CFunction_G_move_With_CGeoPoint_CBearing_doublePtr.asFunction<_CGeoPoint Function(_CGeoPoint, _CBearing, double)>();
 late final _CFunction_G_isGeoPointValid_With_CGeoPointPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoPoint)>>('CFunction_G_isGeoPointValid_With_CGeoPoint');
 late final _CFunction_G_isGeoPointValid_With_CGeoPoint = _CFunction_G_isGeoPointValid_With_CGeoPointPtr.asFunction<bool Function(_CGeoPoint)>();
+late final _CFunction_G_isGeoRectValid_With_CGeoRectPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect)>>('CFunction_G_isGeoRectValid_With_CGeoRect');
+late final _CFunction_G_isGeoRectValid_With_CGeoRect = _CFunction_G_isGeoRectValid_With_CGeoRectPtr.asFunction<bool Function(_CGeoRect)>();
+late final _CFunction_G_containsPoint_With_CGeoRect_CGeoPointPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect, _CGeoPoint)>>('CFunction_G_containsPoint_With_CGeoRect_CGeoPoint');
+late final _CFunction_G_containsPoint_With_CGeoRect_CGeoPoint = _CFunction_G_containsPoint_With_CGeoRect_CGeoPointPtr.asFunction<bool Function(_CGeoRect, _CGeoPoint)>();
+late final _CFunction_G_containsRect_With_CGeoRect_CGeoRectPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect, _CGeoRect)>>('CFunction_G_containsRect_With_CGeoRect_CGeoRect');
+late final _CFunction_G_containsRect_With_CGeoRect_CGeoRect = _CFunction_G_containsRect_With_CGeoRect_CGeoRectPtr.asFunction<bool Function(_CGeoRect, _CGeoRect)>();
+late final _CFunction_G_expandPoint_With_CGeoRect_CGeoPointPtr = _lookup<ffi.NativeFunction<_CGeoRect Function(_CGeoRect, _CGeoPoint)>>('CFunction_G_expandPoint_With_CGeoRect_CGeoPoint');
+late final _CFunction_G_expandPoint_With_CGeoRect_CGeoPoint = _CFunction_G_expandPoint_With_CGeoRect_CGeoPointPtr.asFunction<_CGeoRect Function(_CGeoRect, _CGeoPoint)>();
+late final _CFunction_G_expandRect_With_CGeoRect_CGeoRectPtr = _lookup<ffi.NativeFunction<_CGeoRect Function(_CGeoRect, _CGeoRect)>>('CFunction_G_expandRect_With_CGeoRect_CGeoRect');
+late final _CFunction_G_expandRect_With_CGeoRect_CGeoRect = _CFunction_G_expandRect_With_CGeoRect_CGeoRectPtr.asFunction<_CGeoRect Function(_CGeoRect, _CGeoRect)>();
+late final _CFunction_G_isDegenerate_With_CGeoRectPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect)>>('CFunction_G_isDegenerate_With_CGeoRect');
+late final _CFunction_G_isDegenerate_With_CGeoRect = _CFunction_G_isDegenerate_With_CGeoRectPtr.asFunction<bool Function(_CGeoRect)>();
+late final _CFunction_G_intersects_With_CGeoRect_CGeoRectPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect, _CGeoRect)>>('CFunction_G_intersects_With_CGeoRect_CGeoRect');
+late final _CFunction_G_intersects_With_CGeoRect_CGeoRect = _CFunction_G_intersects_With_CGeoRect_CGeoRectPtr.asFunction<bool Function(_CGeoRect, _CGeoRect)>();
 
 late final _CApartmentRangeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CApartmentRange Function()>>('CApartmentRangeMakeDefault');
 late final _CApartmentRangeMakeDefault = _CApartmentRangeMakeDefaultPtr.asFunction<_CApartmentRange Function()>();
@@ -52938,12 +51424,6 @@ late final _COptional_CTradeLicenseMakeDefault = _COptional_CTradeLicenseMakeDef
 
 late final _COptional_CTradeLicense_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CTradeLicense)>>('COptional_CTradeLicense_release');
 late final _COptional_CTradeLicense_release = _COptional_CTradeLicense_releasePtr.asFunction<void Function(_COptional_CTradeLicense)>();
-
-late final _CCategorySortTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategorySortType Function()>>('CCategorySortTypeMakeDefault');
-late final _CCategorySortTypeMakeDefault = _CCategorySortTypeMakeDefaultPtr.asFunction<_CCategorySortType Function()>();
-
-late final _CCategoryTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategoryType Function()>>('CCategoryTypeMakeDefault');
-late final _CCategoryTypeMakeDefault = _CCategoryTypeMakeDefaultPtr.asFunction<_CCategoryType Function()>();
 
 late final _CClosedReasonMakeDefaultPtr = _lookup<ffi.NativeFunction<_CClosedReason Function()>>('CClosedReasonMakeDefault');
 late final _CClosedReasonMakeDefault = _CClosedReasonMakeDefaultPtr.asFunction<_CClosedReason Function()>();
@@ -53833,138 +52313,6 @@ late final _COptional_CPageMakeDefault = _COptional_CPageMakeDefaultPtr.asFuncti
 
 late final _COptional_CPage_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CPage)>>('COptional_CPage_release');
 late final _COptional_CPage_release = _COptional_CPage_releasePtr.asFunction<void Function(_COptional_CPage)>();
-late final _CCategory_idPtr = _lookup<ffi.NativeFunction<_CRubricId Function(_CCategory)>>('CCategory_id');
-late final _CCategory_id = _CCategory_idPtr.asFunction<_CRubricId Function(_CCategory)>();
-late final _CCategory_typePtr = _lookup<ffi.NativeFunction<_CCategoryType Function(_CCategory)>>('CCategory_type');
-late final _CCategory_type = _CCategory_typePtr.asFunction<_CCategoryType Function(_CCategory)>();
-late final _CCategory_namePtr = _lookup<ffi.NativeFunction<_CString Function(_CCategory)>>('CCategory_name');
-late final _CCategory_name = _CCategory_namePtr.asFunction<_CString Function(_CCategory)>();
-late final _CCategory_titlePtr = _lookup<ffi.NativeFunction<_CString Function(_CCategory)>>('CCategory_title');
-late final _CCategory_title = _CCategory_titlePtr.asFunction<_CString Function(_CCategory)>();
-late final _CCategory_captionPtr = _lookup<ffi.NativeFunction<_CString Function(_CCategory)>>('CCategory_caption');
-late final _CCategory_caption = _CCategory_captionPtr.asFunction<_CString Function(_CCategory)>();
-late final _CCategory_seoNamePtr = _lookup<ffi.NativeFunction<_CString Function(_CCategory)>>('CCategory_seoName');
-late final _CCategory_seoName = _CCategory_seoNamePtr.asFunction<_CString Function(_CCategory)>();
-late final _CCategory_keywordPtr = _lookup<ffi.NativeFunction<_CString Function(_CCategory)>>('CCategory_keyword');
-late final _CCategory_keyword = _CCategory_keywordPtr.asFunction<_CString Function(_CCategory)>();
-late final _CCategory_tagPtr = _lookup<ffi.NativeFunction<_CString Function(_CCategory)>>('CCategory_tag');
-late final _CCategory_tag = _CCategory_tagPtr.asFunction<_CString Function(_CCategory)>();
-late final _CCategory_iconUrlPtr = _lookup<ffi.NativeFunction<_CString Function(_CCategory)>>('CCategory_iconUrl');
-late final _CCategory_iconUrl = _CCategory_iconUrlPtr.asFunction<_CString Function(_CCategory)>();
-late final _CCategory_suggestIconPtr = _lookup<ffi.NativeFunction<_CString Function(_CCategory)>>('CCategory_suggestIcon');
-late final _CCategory_suggestIcon = _CCategory_suggestIconPtr.asFunction<_CString Function(_CCategory)>();
-late final _CCategory_parentIdPtr = _lookup<ffi.NativeFunction<_COptional_CRubricId Function(_CCategory)>>('CCategory_parentId');
-late final _CCategory_parentId = _CCategory_parentIdPtr.asFunction<_COptional_CRubricId Function(_CCategory)>();
-late final _CCategory_branchCountPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CCategory)>>('CCategory_branchCount');
-late final _CCategory_branchCount = _CCategory_branchCountPtr.asFunction<int Function(_CCategory)>();
-late final _CCategory_orgCountPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CCategory)>>('CCategory_orgCount');
-late final _CCategory_orgCount = _CCategory_orgCountPtr.asFunction<int Function(_CCategory)>();
-late final _CCategory_geoCountPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CCategory)>>('CCategory_geoCount');
-late final _CCategory_geoCount = _CCategory_geoCountPtr.asFunction<int Function(_CCategory)>();
-late final _CCategory_isReviewableOnFlampPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CCategory)>>('CCategory_isReviewableOnFlamp');
-late final _CCategory_isReviewableOnFlamp = _CCategory_isReviewableOnFlampPtr.asFunction<bool Function(_CCategory)>();
-late final _CCategory_childrenPtr = _lookup<ffi.NativeFunction<_CArray_CCategory Function(_CCategory)>>('CCategory_children');
-late final _CCategory_children = _CCategory_childrenPtr.asFunction<_CArray_CCategory Function(_CCategory)>();
-
-late final _CCategory_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CCategory_cg_objectIdentifier');
-late final _CCategory_cg_objectIdentifier = _CCategory_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
-
-
-late final _CCategory_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategory_release');
-late final _CCategory_release = _CCategory_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategory_retainPtr = _lookup<ffi.NativeFunction<_CCategory Function(ffi.Pointer<ffi.Void>)>>('CCategory_retain');
-late final _CCategory_retain = _CCategory_retainPtr.asFunction<_CCategory Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoryMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategory Function()>>('CCategoryMakeDefault');
-late final _CCategoryMakeDefault = _CCategoryMakeDefaultPtr.asFunction<_CCategory Function()>();
-
-
-late final _COptional_CRubricIdMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CRubricId Function()>>('COptional_CRubricIdMakeDefault');
-late final _COptional_CRubricIdMakeDefault = _COptional_CRubricIdMakeDefaultPtr.asFunction<_COptional_CRubricId Function()>();
-
-late final _CArray_CCategorymakeEmptyPtr = _lookup<ffi.NativeFunction<_CArray_CCategory Function()>>('CArray_CCategory_makeEmpty');
-late final _CArray_CCategorymakeEmpty = _CArray_CCategorymakeEmptyPtr.asFunction<_CArray_CCategory Function()>();
-late final _CArray_CCategoryaddElementPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CCategory, _CCategory)>>('CArray_CCategory_addElement');
-late final _CArray_CCategoryaddElement = _CArray_CCategoryaddElementPtr.asFunction<void Function(_CArray_CCategory, _CCategory)>();
-late final _forEach_CArray_CCategoryPtr = _lookup<ffi.NativeFunction<
-  ffi.Void Function(_CArray_CCategory, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCategory)>>)
->>('CArray_CCategory_forEachWithFunctionPointer');
-late final _forEach_CArray_CCategory = _forEach_CArray_CCategoryPtr.asFunction<
-  void Function(_CArray_CCategory, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCategory)
->>)>();
-late final _CArray_CCategory_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CCategory)>>('CArray_CCategory_release');
-late final _CArray_CCategory_release = _CArray_CCategory_releasePtr.asFunction<void Function(_CArray_CCategory)>();
-late final _CCategoriesPage_itemsPtr = _lookup<ffi.NativeFunction<_CArray_CCategory Function(_CCategoriesPage)>>('CCategoriesPage_items');
-late final _CCategoriesPage_items = _CCategoriesPage_itemsPtr.asFunction<_CArray_CCategory Function(_CCategoriesPage)>();
-
-late final _CCategoriesPage_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CCategoriesPage_cg_objectIdentifier');
-late final _CCategoriesPage_cg_objectIdentifier = _CCategoriesPage_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
-
-late final _CCategoriesPage_fetchPrevPagePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CCategoriesPage Function(_CCategoriesPage)>>('CCategoriesPage_fetchPrevPage');
-late final _CCategoriesPage_fetchPrevPage = _CCategoriesPage_fetchPrevPagePtr.asFunction<_CFuture_COptional_CCategoriesPage Function(_CCategoriesPage)>();
-late final _CCategoriesPage_fetchNextPagePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CCategoriesPage Function(_CCategoriesPage)>>('CCategoriesPage_fetchNextPage');
-late final _CCategoriesPage_fetchNextPage = _CCategoriesPage_fetchNextPagePtr.asFunction<_CFuture_COptional_CCategoriesPage Function(_CCategoriesPage)>();
-
-late final _CCategoriesPage_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoriesPage_release');
-late final _CCategoriesPage_release = _CCategoriesPage_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoriesPage_retainPtr = _lookup<ffi.NativeFunction<_CCategoriesPage Function(ffi.Pointer<ffi.Void>)>>('CCategoriesPage_retain');
-late final _CCategoriesPage_retain = _CCategoriesPage_retainPtr.asFunction<_CCategoriesPage Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoriesPageMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategoriesPage Function()>>('CCategoriesPageMakeDefault');
-late final _CCategoriesPageMakeDefault = _CCategoriesPageMakeDefaultPtr.asFunction<_CCategoriesPage Function()>();
-
-
-late final _CFuture_COptional_CCategoriesPageMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CCategoriesPage Function()>>('CFuture_COptional_CCategoriesPageMakeDefault');
-late final _CFuture_COptional_CCategoriesPageMakeDefault = _CFuture_COptional_CCategoriesPageMakeDefaultPtr.asFunction<_CFuture_COptional_CCategoriesPage Function()>();
-late final _CFuture_COptional_CCategoriesPage_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CFuture_COptional_CCategoriesPage)>>('CFuture_COptional_CCategoriesPage_release');
-late final _CFuture_COptional_CCategoriesPage_release = _CFuture_COptional_CCategoriesPage_releasePtr.asFunction<void Function(_CFuture_COptional_CCategoriesPage)>();
-late final _CFuture_COptional_CCategoriesPage_retainPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CCategoriesPage Function(_CFuture_COptional_CCategoriesPage)>>('CFuture_COptional_CCategoriesPage_retain');
-late final _CFuture_COptional_CCategoriesPage_retain = _CFuture_COptional_CCategoriesPage_retainPtr.asFunction<_CFuture_COptional_CCategoriesPage Function(_CFuture_COptional_CCategoriesPage)>();
-late final _CFuture_COptional_CCategoriesPageReceivePtr = _lookup<ffi.NativeFunction<
-  _CCancellable Function(
-    _CFuture_COptional_CCategoriesPage,
-    ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
-  )
->>('CFuture_COptional_CCategoriesPage_receive');
-late final _CFuture_COptional_CCategoriesPageReceive = _CFuture_COptional_CCategoriesPageReceivePtr.asFunction<
-  _CCancellable Function(
-    _CFuture_COptional_CCategoriesPage,
-    int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
-  )
->();
-
-late final _COptional_CCategoriesPageMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CCategoriesPage Function()>>('COptional_CCategoriesPageMakeDefault');
-late final _COptional_CCategoriesPageMakeDefault = _COptional_CCategoriesPageMakeDefaultPtr.asFunction<_COptional_CCategoriesPage Function()>();
-
-late final _COptional_CCategoriesPage_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CCategoriesPage)>>('COptional_CCategoriesPage_release');
-late final _COptional_CCategoriesPage_release = _COptional_CCategoriesPage_releasePtr.asFunction<void Function(_COptional_CCategoriesPage)>();
-late final _CSearchCategoriesResult_totalPtr = _lookup<ffi.NativeFunction<ffi.Uint32 Function(_CSearchCategoriesResult)>>('CSearchCategoriesResult_total');
-late final _CSearchCategoriesResult_total = _CSearchCategoriesResult_totalPtr.asFunction<int Function(_CSearchCategoriesResult)>();
-late final _CSearchCategoriesResult_firstPagePtr = _lookup<ffi.NativeFunction<_COptional_CCategoriesPage Function(_CSearchCategoriesResult)>>('CSearchCategoriesResult_firstPage');
-late final _CSearchCategoriesResult_firstPage = _CSearchCategoriesResult_firstPagePtr.asFunction<_COptional_CCategoriesPage Function(_CSearchCategoriesResult)>();
-
-late final _CSearchCategoriesResult_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CSearchCategoriesResult_cg_objectIdentifier');
-late final _CSearchCategoriesResult_cg_objectIdentifier = _CSearchCategoriesResult_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
-
-
-late final _CSearchCategoriesResult_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchCategoriesResult_release');
-late final _CSearchCategoriesResult_release = _CSearchCategoriesResult_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-late final _CSearchCategoriesResult_retainPtr = _lookup<ffi.NativeFunction<_CSearchCategoriesResult Function(ffi.Pointer<ffi.Void>)>>('CSearchCategoriesResult_retain');
-late final _CSearchCategoriesResult_retain = _CSearchCategoriesResult_retainPtr.asFunction<_CSearchCategoriesResult Function(ffi.Pointer<ffi.Void>)>();
-late final _CSearchCategoriesResultMakeDefaultPtr = _lookup<ffi.NativeFunction<_CSearchCategoriesResult Function()>>('CSearchCategoriesResultMakeDefault');
-late final _CSearchCategoriesResultMakeDefault = _CSearchCategoriesResultMakeDefaultPtr.asFunction<_CSearchCategoriesResult Function()>();
-
-
-late final _CGeoRectMakeDefaultPtr = _lookup<ffi.NativeFunction<_CGeoRect Function()>>('CGeoRectMakeDefault');
-late final _CGeoRectMakeDefault = _CGeoRectMakeDefaultPtr.asFunction<_CGeoRect Function()>();
-
-
-late final _CCategoryGeoContext_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CCategoryGeoContext)>>('CCategoryGeoContext_release');
-late final _CCategoryGeoContext_release = _CCategoryGeoContext_releasePtr.asFunction<void Function(_CCategoryGeoContext)>();
-late final _CCategoryGeoContextMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategoryGeoContext Function()>>('CCategoryGeoContextMakeDefault');
-late final _CCategoryGeoContextMakeDefault = _CCategoryGeoContextMakeDefaultPtr.asFunction<_CCategoryGeoContext Function()>();
 
 late final _CWidgetTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CWidgetType Function()>>('CWidgetTypeMakeDefault');
 late final _CWidgetTypeMakeDefault = _CWidgetTypeMakeDefaultPtr.asFunction<_CWidgetType Function()>();
@@ -54354,18 +52702,6 @@ late final _CSearchQuery_retain = _CSearchQuery_retainPtr.asFunction<_CSearchQue
 late final _CSearchQueryMakeDefaultPtr = _lookup<ffi.NativeFunction<_CSearchQuery Function()>>('CSearchQueryMakeDefault');
 late final _CSearchQueryMakeDefault = _CSearchQueryMakeDefaultPtr.asFunction<_CSearchQuery Function()>();
 
-
-late final _CCategoryQuery_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CCategoryQuery_cg_objectIdentifier');
-late final _CCategoryQuery_cg_objectIdentifier = _CCategoryQuery_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
-
-
-late final _CCategoryQuery_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryQuery_release');
-late final _CCategoryQuery_release = _CCategoryQuery_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoryQuery_retainPtr = _lookup<ffi.NativeFunction<_CCategoryQuery Function(ffi.Pointer<ffi.Void>)>>('CCategoryQuery_retain');
-late final _CCategoryQuery_retain = _CCategoryQuery_retainPtr.asFunction<_CCategoryQuery Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoryQueryMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategoryQuery Function()>>('CCategoryQueryMakeDefault');
-late final _CCategoryQueryMakeDefault = _CCategoryQueryMakeDefaultPtr.asFunction<_CCategoryQuery Function()>();
-
 late final _CSuggestObjectHandler_itemPtr = _lookup<ffi.NativeFunction<_CDirectoryObject Function(_CSuggestObjectHandler)>>('CSuggestObjectHandler_item');
 late final _CSuggestObjectHandler_item = _CSuggestObjectHandler_itemPtr.asFunction<_CDirectoryObject Function(_CSuggestObjectHandler)>();
 
@@ -54513,12 +52849,14 @@ late final _CSearchManager_search_CSearchQueryPtr = _lookup<ffi.NativeFunction<_
 late final _CSearchManager_search_CSearchQuery = _CSearchManager_search_CSearchQueryPtr.asFunction<_CFuture_CSearchResult Function(_CSearchManager, _CSearchQuery)>();
 late final _CSearchManager_searchBySuggest_CSuggest_CSearchSettingsPtr = _lookup<ffi.NativeFunction<_CFuture_CSearchResult Function(_CSearchManager, _CSuggest, _CSearchSettings)>>('CSearchManager_searchBySuggest_CSuggest_CSearchSettings');
 late final _CSearchManager_searchBySuggest_CSuggest_CSearchSettings = _CSearchManager_searchBySuggest_CSuggest_CSearchSettingsPtr.asFunction<_CFuture_CSearchResult Function(_CSearchManager, _CSuggest, _CSearchSettings)>();
-late final _CSearchManager_searchCategories_CCategoryQueryPtr = _lookup<ffi.NativeFunction<_CFuture_CSearchCategoriesResult Function(_CSearchManager, _CCategoryQuery)>>('CSearchManager_searchCategories_CCategoryQuery');
-late final _CSearchManager_searchCategories_CCategoryQuery = _CSearchManager_searchCategories_CCategoryQueryPtr.asFunction<_CFuture_CSearchCategoriesResult Function(_CSearchManager, _CCategoryQuery)>();
-late final _CSearchManager_searchByIds_CArray_CString_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CFuture_CArray_CDirectoryObject Function(_CSearchManager, _CArray_CString, _COptional_CLocale)>>('CSearchManager_searchByIds_CArray_CString_COptional_CLocale');
-late final _CSearchManager_searchByIds_CArray_CString_COptional_CLocale = _CSearchManager_searchByIds_CArray_CString_COptional_CLocalePtr.asFunction<_CFuture_CArray_CDirectoryObject Function(_CSearchManager, _CArray_CString, _COptional_CLocale)>();
-late final _CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CFuture_CArray_CDirectoryObject Function(_CSearchManager, _CArray_CDgisObjectId, _COptional_CLocale)>>('CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocale');
-late final _CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocale = _CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocalePtr.asFunction<_CFuture_CArray_CDirectoryObject Function(_CSearchManager, _CArray_CDgisObjectId, _COptional_CLocale)>();
+late final _CSearchManager_searchById_CStringPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CString)>>('CSearchManager_searchById_CString');
+late final _CSearchManager_searchById_CString = _CSearchManager_searchById_CStringPtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CString)>();
+late final _CSearchManager_searchByDirectoryObjectId_CDgisObjectIdPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CDgisObjectId)>>('CSearchManager_searchByDirectoryObjectId_CDgisObjectId');
+late final _CSearchManager_searchByDirectoryObjectId_CDgisObjectId = _CSearchManager_searchByDirectoryObjectId_CDgisObjectIdPtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CDgisObjectId)>();
+late final _CSearchManager_searchByIdWithLocale_CString_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CString, _COptional_CLocale)>>('CSearchManager_searchByIdWithLocale_CString_COptional_CLocale');
+late final _CSearchManager_searchByIdWithLocale_CString_COptional_CLocale = _CSearchManager_searchByIdWithLocale_CString_COptional_CLocalePtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CString, _COptional_CLocale)>();
+late final _CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CDgisObjectId, _COptional_CLocale)>>('CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocale');
+late final _CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocale = _CSearchManager_searchByDirectoryObjectIdWithLocale_CDgisObjectId_COptional_CLocalePtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CSearchManager, _CDgisObjectId, _COptional_CLocale)>();
 
 late final _CSearchManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchManager_release');
 late final _CSearchManager_release = _CSearchManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
@@ -54577,51 +52915,34 @@ late final _CFuture_CSearchResultReceive = _CFuture_CSearchResultReceivePtr.asFu
   )
 >();
 
-late final _CFuture_CSearchCategoriesResultMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFuture_CSearchCategoriesResult Function()>>('CFuture_CSearchCategoriesResultMakeDefault');
-late final _CFuture_CSearchCategoriesResultMakeDefault = _CFuture_CSearchCategoriesResultMakeDefaultPtr.asFunction<_CFuture_CSearchCategoriesResult Function()>();
-late final _CFuture_CSearchCategoriesResult_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CFuture_CSearchCategoriesResult)>>('CFuture_CSearchCategoriesResult_release');
-late final _CFuture_CSearchCategoriesResult_release = _CFuture_CSearchCategoriesResult_releasePtr.asFunction<void Function(_CFuture_CSearchCategoriesResult)>();
-late final _CFuture_CSearchCategoriesResult_retainPtr = _lookup<ffi.NativeFunction<_CFuture_CSearchCategoriesResult Function(_CFuture_CSearchCategoriesResult)>>('CFuture_CSearchCategoriesResult_retain');
-late final _CFuture_CSearchCategoriesResult_retain = _CFuture_CSearchCategoriesResult_retainPtr.asFunction<_CFuture_CSearchCategoriesResult Function(_CFuture_CSearchCategoriesResult)>();
-late final _CFuture_CSearchCategoriesResultReceivePtr = _lookup<ffi.NativeFunction<
+late final _CFuture_COptional_CDirectoryObjectMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function()>>('CFuture_COptional_CDirectoryObjectMakeDefault');
+late final _CFuture_COptional_CDirectoryObjectMakeDefault = _CFuture_COptional_CDirectoryObjectMakeDefaultPtr.asFunction<_CFuture_COptional_CDirectoryObject Function()>();
+late final _CFuture_COptional_CDirectoryObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CFuture_COptional_CDirectoryObject)>>('CFuture_COptional_CDirectoryObject_release');
+late final _CFuture_COptional_CDirectoryObject_release = _CFuture_COptional_CDirectoryObject_releasePtr.asFunction<void Function(_CFuture_COptional_CDirectoryObject)>();
+late final _CFuture_COptional_CDirectoryObject_retainPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CDirectoryObject Function(_CFuture_COptional_CDirectoryObject)>>('CFuture_COptional_CDirectoryObject_retain');
+late final _CFuture_COptional_CDirectoryObject_retain = _CFuture_COptional_CDirectoryObject_retainPtr.asFunction<_CFuture_COptional_CDirectoryObject Function(_CFuture_COptional_CDirectoryObject)>();
+late final _CFuture_COptional_CDirectoryObjectReceivePtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
-    _CFuture_CSearchCategoriesResult,
+    _CFuture_COptional_CDirectoryObject,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)>>,
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CDirectoryObject, ffi.Int64)>>,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
   )
->>('CFuture_CSearchCategoriesResult_receive');
-late final _CFuture_CSearchCategoriesResultReceive = _CFuture_CSearchCategoriesResultReceivePtr.asFunction<
+>>('CFuture_COptional_CDirectoryObject_receive');
+late final _CFuture_COptional_CDirectoryObjectReceive = _CFuture_COptional_CDirectoryObjectReceivePtr.asFunction<
   _CCancellable Function(
-    _CFuture_CSearchCategoriesResult,
+    _CFuture_COptional_CDirectoryObject,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)>>,
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CDirectoryObject, ffi.Int64)>>,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
   )
 >();
 
-late final _CFuture_CArray_CDirectoryObjectMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFuture_CArray_CDirectoryObject Function()>>('CFuture_CArray_CDirectoryObjectMakeDefault');
-late final _CFuture_CArray_CDirectoryObjectMakeDefault = _CFuture_CArray_CDirectoryObjectMakeDefaultPtr.asFunction<_CFuture_CArray_CDirectoryObject Function()>();
-late final _CFuture_CArray_CDirectoryObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CFuture_CArray_CDirectoryObject)>>('CFuture_CArray_CDirectoryObject_release');
-late final _CFuture_CArray_CDirectoryObject_release = _CFuture_CArray_CDirectoryObject_releasePtr.asFunction<void Function(_CFuture_CArray_CDirectoryObject)>();
-late final _CFuture_CArray_CDirectoryObject_retainPtr = _lookup<ffi.NativeFunction<_CFuture_CArray_CDirectoryObject Function(_CFuture_CArray_CDirectoryObject)>>('CFuture_CArray_CDirectoryObject_retain');
-late final _CFuture_CArray_CDirectoryObject_retain = _CFuture_CArray_CDirectoryObject_retainPtr.asFunction<_CFuture_CArray_CDirectoryObject Function(_CFuture_CArray_CDirectoryObject)>();
-late final _CFuture_CArray_CDirectoryObjectReceivePtr = _lookup<ffi.NativeFunction<
-  _CCancellable Function(
-    _CFuture_CArray_CDirectoryObject,
-    ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
-  )
->>('CFuture_CArray_CDirectoryObject_receive');
-late final _CFuture_CArray_CDirectoryObjectReceive = _CFuture_CArray_CDirectoryObjectReceivePtr.asFunction<
-  _CCancellable Function(
-    _CFuture_CArray_CDirectoryObject,
-    int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
-  )
->();
+late final _COptional_CDirectoryObjectMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CDirectoryObject Function()>>('COptional_CDirectoryObjectMakeDefault');
+late final _COptional_CDirectoryObjectMakeDefault = _COptional_CDirectoryObjectMakeDefaultPtr.asFunction<_COptional_CDirectoryObject Function()>();
+
+late final _COptional_CDirectoryObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CDirectoryObject)>>('COptional_CDirectoryObject_release');
+late final _COptional_CDirectoryObject_release = _COptional_CDirectoryObject_releasePtr.asFunction<void Function(_COptional_CDirectoryObject)>();
 late final _CFunction_G_makeLocale_With_CStringPtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function(_CString)>>('CFunction_G_makeLocale_With_CString');
 late final _CFunction_G_makeLocale_With_CString = _CFunction_G_makeLocale_With_CStringPtr.asFunction<_COptional_CLocale Function(_CString)>();
 
@@ -54638,16 +52959,30 @@ late final _COptional_CLocale_release = _COptional_CLocale_releasePtr.asFunction
 late final _CSearchQueryBuilder_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryBuilder_cg_objectIdentifier');
 late final _CSearchQueryBuilder_cg_objectIdentifier = _CSearchQueryBuilder_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
+late final _CSearchQueryBuilder_S_fromQueryText_CStringPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CString)>>('CSearchQueryBuilder_S_fromQueryText_CString');
+late final _CSearchQueryBuilder_S_fromQueryText_CString = _CSearchQueryBuilder_S_fromQueryText_CStringPtr.asFunction<_CSearchQueryBuilder Function(_CString)>();
+late final _CSearchQueryBuilder_S_fromRubricIds_CArray_CRubricIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CArray_CRubricId)>>('CSearchQueryBuilder_S_fromRubricIds_CArray_CRubricId');
+late final _CSearchQueryBuilder_S_fromRubricIds_CArray_CRubricId = _CSearchQueryBuilder_S_fromRubricIds_CArray_CRubricIdPtr.asFunction<_CSearchQueryBuilder Function(_CArray_CRubricId)>();
+late final _CSearchQueryBuilder_S_fromQueryTextAndRubricIds_CString_CArray_CRubricIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CString, _CArray_CRubricId)>>('CSearchQueryBuilder_S_fromQueryTextAndRubricIds_CString_CArray_CRubricId');
+late final _CSearchQueryBuilder_S_fromQueryTextAndRubricIds_CString_CArray_CRubricId = _CSearchQueryBuilder_S_fromQueryTextAndRubricIds_CString_CArray_CRubricIdPtr.asFunction<_CSearchQueryBuilder Function(_CString, _CArray_CRubricId)>();
 late final _CSearchQueryBuilder_S_fromQuery_CSearchQueryPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQuery)>>('CSearchQueryBuilder_S_fromQuery_CSearchQuery');
 late final _CSearchQueryBuilder_S_fromQuery_CSearchQuery = _CSearchQueryBuilder_S_fromQuery_CSearchQueryPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQuery)>();
+late final _CSearchQueryBuilder_S_fromOrgId_COrgIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_COrgId)>>('CSearchQueryBuilder_S_fromOrgId_COrgId');
+late final _CSearchQueryBuilder_S_fromOrgId_COrgId = _CSearchQueryBuilder_S_fromOrgId_COrgIdPtr.asFunction<_CSearchQueryBuilder Function(_COrgId)>();
+late final _CSearchQueryBuilder_S_fromBuildingId_CBuildingIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CBuildingId)>>('CSearchQueryBuilder_S_fromBuildingId_CBuildingId');
+late final _CSearchQueryBuilder_S_fromBuildingId_CBuildingId = _CSearchQueryBuilder_S_fromBuildingId_CBuildingIdPtr.asFunction<_CSearchQueryBuilder Function(_CBuildingId)>();
+late final _CSearchQueryBuilder_S_fromGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CGeoPoint)>>('CSearchQueryBuilder_S_fromGeoPoint_CGeoPoint');
+late final _CSearchQueryBuilder_S_fromGeoPoint_CGeoPoint = _CSearchQueryBuilder_S_fromGeoPoint_CGeoPointPtr.asFunction<_CSearchQueryBuilder Function(_CGeoPoint)>();
 late final _CSearchQueryBuilder_setQueryText_COptional_CStringPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CString)>>('CSearchQueryBuilder_setQueryText_COptional_CString');
 late final _CSearchQueryBuilder_setQueryText_COptional_CString = _CSearchQueryBuilder_setQueryText_COptional_CStringPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CString)>();
 late final _CSearchQueryBuilder_setRubricIds_CArray_CRubricIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_CRubricId)>>('CSearchQueryBuilder_setRubricIds_CArray_CRubricId');
 late final _CSearchQueryBuilder_setRubricIds_CArray_CRubricId = _CSearchQueryBuilder_setRubricIds_CArray_CRubricIdPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_CRubricId)>();
-late final _CSearchQueryBuilder_setOrgIds_CArray_COrgIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_COrgId)>>('CSearchQueryBuilder_setOrgIds_CArray_COrgId');
-late final _CSearchQueryBuilder_setOrgIds_CArray_COrgId = _CSearchQueryBuilder_setOrgIds_CArray_COrgIdPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_COrgId)>();
-late final _CSearchQueryBuilder_setBuildingIds_CArray_CBuildingIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_CBuildingId)>>('CSearchQueryBuilder_setBuildingIds_CArray_CBuildingId');
-late final _CSearchQueryBuilder_setBuildingIds_CArray_CBuildingId = _CSearchQueryBuilder_setBuildingIds_CArray_CBuildingIdPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CArray_CBuildingId)>();
+late final _CSearchQueryBuilder_setOrgId_COptional_COrgIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_COrgId)>>('CSearchQueryBuilder_setOrgId_COptional_COrgId');
+late final _CSearchQueryBuilder_setOrgId_COptional_COrgId = _CSearchQueryBuilder_setOrgId_COptional_COrgIdPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_COrgId)>();
+late final _CSearchQueryBuilder_setBuildingId_COptional_CBuildingIdPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CBuildingId)>>('CSearchQueryBuilder_setBuildingId_COptional_CBuildingId');
+late final _CSearchQueryBuilder_setBuildingId_COptional_CBuildingId = _CSearchQueryBuilder_setBuildingId_COptional_CBuildingIdPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CBuildingId)>();
+late final _CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPointPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CArray_CGeoPoint)>>('CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint');
+late final _CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint = _CSearchQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPointPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CArray_CGeoPoint)>();
 late final _CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometryPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeometry)>>('CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometry');
 late final _CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometry = _CSearchQueryBuilder_setRestrictionGeometry_COptional_CGeometryPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeometry)>();
 late final _CSearchQueryBuilder_setAreaOfInterest_COptional_CGeoRectPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeoRect)>>('CSearchQueryBuilder_setAreaOfInterest_COptional_CGeoRect');
@@ -54662,6 +52997,8 @@ late final _CSearchQueryBuilder_setDirectoryFilter_CDirectoryFilterPtr = _lookup
 late final _CSearchQueryBuilder_setDirectoryFilter_CDirectoryFilter = _CSearchQueryBuilder_setDirectoryFilter_CDirectoryFilterPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CDirectoryFilter)>();
 late final _CSearchQueryBuilder_setSortingType_CSortingTypePtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CSortingType)>>('CSearchQueryBuilder_setSortingType_CSortingType');
 late final _CSearchQueryBuilder_setSortingType_CSortingType = _CSearchQueryBuilder_setSortingType_CSortingTypePtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _CSortingType)>();
+late final _CSearchQueryBuilder_setGeoPoint_COptional_CGeoPointPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeoPoint)>>('CSearchQueryBuilder_setGeoPoint_COptional_CGeoPoint');
+late final _CSearchQueryBuilder_setGeoPoint_COptional_CGeoPoint = _CSearchQueryBuilder_setGeoPoint_COptional_CGeoPointPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CGeoPoint)>();
 late final _CSearchQueryBuilder_setRadius_COptional_CMeterPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CMeter)>>('CSearchQueryBuilder_setRadius_COptional_CMeter');
 late final _CSearchQueryBuilder_setRadius_COptional_CMeter = _CSearchQueryBuilder_setRadius_COptional_CMeterPtr.asFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CMeter)>();
 late final _CSearchQueryBuilder_setLocale_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(_CSearchQueryBuilder, _COptional_CLocale)>>('CSearchQueryBuilder_setLocale_COptional_CLocale');
@@ -54681,31 +53018,14 @@ late final _CSearchQueryBuilderMakeDefaultPtr = _lookup<ffi.NativeFunction<_CSea
 late final _CSearchQueryBuilderMakeDefault = _CSearchQueryBuilderMakeDefaultPtr.asFunction<_CSearchQueryBuilder Function()>();
 
 
-late final _CArray_COrgIdmakeEmptyPtr = _lookup<ffi.NativeFunction<_CArray_COrgId Function()>>('CArray_COrgId_makeEmpty');
-late final _CArray_COrgIdmakeEmpty = _CArray_COrgIdmakeEmptyPtr.asFunction<_CArray_COrgId Function()>();
-late final _CArray_COrgIdaddElementPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_COrgId, _COrgId)>>('CArray_COrgId_addElement');
-late final _CArray_COrgIdaddElement = _CArray_COrgIdaddElementPtr.asFunction<void Function(_CArray_COrgId, _COrgId)>();
-late final _forEach_CArray_COrgIdPtr = _lookup<ffi.NativeFunction<
-  ffi.Void Function(_CArray_COrgId, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COrgId)>>)
->>('CArray_COrgId_forEachWithFunctionPointer');
-late final _forEach_CArray_COrgId = _forEach_CArray_COrgIdPtr.asFunction<
-  void Function(_CArray_COrgId, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COrgId)
->>)>();
-late final _CArray_COrgId_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_COrgId)>>('CArray_COrgId_release');
-late final _CArray_COrgId_release = _CArray_COrgId_releasePtr.asFunction<void Function(_CArray_COrgId)>();
+late final _COptional_COrgIdMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_COrgId Function()>>('COptional_COrgIdMakeDefault');
+late final _COptional_COrgIdMakeDefault = _COptional_COrgIdMakeDefaultPtr.asFunction<_COptional_COrgId Function()>();
 
-late final _CArray_CBuildingIdmakeEmptyPtr = _lookup<ffi.NativeFunction<_CArray_CBuildingId Function()>>('CArray_CBuildingId_makeEmpty');
-late final _CArray_CBuildingIdmakeEmpty = _CArray_CBuildingIdmakeEmptyPtr.asFunction<_CArray_CBuildingId Function()>();
-late final _CArray_CBuildingIdaddElementPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CBuildingId, _CBuildingId)>>('CArray_CBuildingId_addElement');
-late final _CArray_CBuildingIdaddElement = _CArray_CBuildingIdaddElementPtr.asFunction<void Function(_CArray_CBuildingId, _CBuildingId)>();
-late final _forEach_CArray_CBuildingIdPtr = _lookup<ffi.NativeFunction<
-  ffi.Void Function(_CArray_CBuildingId, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CBuildingId)>>)
->>('CArray_CBuildingId_forEachWithFunctionPointer');
-late final _forEach_CArray_CBuildingId = _forEach_CArray_CBuildingIdPtr.asFunction<
-  void Function(_CArray_CBuildingId, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CBuildingId)
->>)>();
-late final _CArray_CBuildingId_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CBuildingId)>>('CArray_CBuildingId_release');
-late final _CArray_CBuildingId_release = _CArray_CBuildingId_releasePtr.asFunction<void Function(_CArray_CBuildingId)>();
+late final _COptional_CArray_CGeoPointMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CArray_CGeoPoint Function()>>('COptional_CArray_CGeoPointMakeDefault');
+late final _COptional_CArray_CGeoPointMakeDefault = _COptional_CArray_CGeoPointMakeDefaultPtr.asFunction<_COptional_CArray_CGeoPoint Function()>();
+
+late final _COptional_CArray_CGeoPoint_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CArray_CGeoPoint)>>('COptional_CArray_CGeoPoint_release');
+late final _COptional_CArray_CGeoPoint_release = _COptional_CArray_CGeoPoint_releasePtr.asFunction<void Function(_COptional_CArray_CGeoPoint)>();
 
 late final _COptional_CGeoRectMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CGeoRect Function()>>('COptional_CGeoRectMakeDefault');
 late final _COptional_CGeoRectMakeDefault = _COptional_CGeoRectMakeDefaultPtr.asFunction<_COptional_CGeoRect Function()>();
@@ -54716,8 +53036,12 @@ late final _COptional_CMeterMakeDefault = _COptional_CMeterMakeDefaultPtr.asFunc
 late final _CSuggestQueryBuilder_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CSuggestQueryBuilder_cg_objectIdentifier');
 late final _CSuggestQueryBuilder_cg_objectIdentifier = _CSuggestQueryBuilder_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
+late final _CSuggestQueryBuilder_S_fromQueryText_CStringPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CString)>>('CSuggestQueryBuilder_S_fromQueryText_CString');
+late final _CSuggestQueryBuilder_S_fromQueryText_CString = _CSuggestQueryBuilder_S_fromQueryText_CStringPtr.asFunction<_CSuggestQueryBuilder Function(_CString)>();
 late final _CSuggestQueryBuilder_S_fromQuery_CSuggestQueryPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQuery)>>('CSuggestQueryBuilder_S_fromQuery_CSuggestQuery');
 late final _CSuggestQueryBuilder_S_fromQuery_CSuggestQuery = _CSuggestQueryBuilder_S_fromQuery_CSuggestQueryPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQuery)>();
+late final _CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPointPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CArray_CGeoPoint)>>('CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint');
+late final _CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPoint = _CSuggestQueryBuilder_setSpatialRestriction_COptional_CArray_CGeoPointPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CArray_CGeoPoint)>();
 late final _CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometryPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeometry)>>('CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometry');
 late final _CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometry = _CSuggestQueryBuilder_setRestrictionGeometry_COptional_CGeometryPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeometry)>();
 late final _CSuggestQueryBuilder_setTerritoryOfInterest_COptional_CGeometryPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, _COptional_CGeometry)>>('CSuggestQueryBuilder_setTerritoryOfInterest_COptional_CGeometry');
@@ -54736,8 +53060,6 @@ late final _CSuggestQueryBuilder_setSearchNearby_boolPtr = _lookup<ffi.NativeFun
 late final _CSuggestQueryBuilder_setSearchNearby_bool = _CSuggestQueryBuilder_setSearchNearby_boolPtr.asFunction<_CSuggestQueryBuilder Function(_CSuggestQueryBuilder, bool)>();
 late final _CSuggestQueryBuilder_buildPtr = _lookup<ffi.NativeFunction<_CSuggestQuery Function(_CSuggestQueryBuilder)>>('CSuggestQueryBuilder_build');
 late final _CSuggestQueryBuilder_build = _CSuggestQueryBuilder_buildPtr.asFunction<_CSuggestQuery Function(_CSuggestQueryBuilder)>();
-late final _CSuggestQueryBuilder_C_createWith_CStringPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CString)>>('CSuggestQueryBuilder_C_createWith_CString');
-late final _CSuggestQueryBuilder_C_createWith_CString = _CSuggestQueryBuilder_C_createWith_CStringPtr.asFunction<_CSuggestQueryBuilder Function(_CString)>();
 
 late final _CSuggestQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestQueryBuilder_release');
 late final _CSuggestQueryBuilder_release = _CSuggestQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
@@ -54759,77 +53081,6 @@ late final _forEach_CArray_CSuggestedType = _forEach_CArray_CSuggestedTypePtr.as
 >>)>();
 late final _CArray_CSuggestedType_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CSuggestedType)>>('CArray_CSuggestedType_release');
 late final _CArray_CSuggestedType_release = _CArray_CSuggestedType_releasePtr.asFunction<void Function(_CArray_CSuggestedType)>();
-
-late final _CCategorySearchQueryBuilder_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CCategorySearchQueryBuilder_cg_objectIdentifier');
-late final _CCategorySearchQueryBuilder_cg_objectIdentifier = _CCategorySearchQueryBuilder_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
-
-late final _CCategorySearchQueryBuilder_setGeoContext_COptional_CCategoryGeoContextPtr = _lookup<ffi.NativeFunction<_CCategorySearchQueryBuilder Function(_CCategorySearchQueryBuilder, _COptional_CCategoryGeoContext)>>('CCategorySearchQueryBuilder_setGeoContext_COptional_CCategoryGeoContext');
-late final _CCategorySearchQueryBuilder_setGeoContext_COptional_CCategoryGeoContext = _CCategorySearchQueryBuilder_setGeoContext_COptional_CCategoryGeoContextPtr.asFunction<_CCategorySearchQueryBuilder Function(_CCategorySearchQueryBuilder, _COptional_CCategoryGeoContext)>();
-late final _CCategorySearchQueryBuilder_setPageSize_uint32_tPtr = _lookup<ffi.NativeFunction<_CCategorySearchQueryBuilder Function(_CCategorySearchQueryBuilder, ffi.Uint32)>>('CCategorySearchQueryBuilder_setPageSize_uint32_t');
-late final _CCategorySearchQueryBuilder_setPageSize_uint32_t = _CCategorySearchQueryBuilder_setPageSize_uint32_tPtr.asFunction<_CCategorySearchQueryBuilder Function(_CCategorySearchQueryBuilder, int)>();
-late final _CCategorySearchQueryBuilder_setLocale_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CCategorySearchQueryBuilder Function(_CCategorySearchQueryBuilder, _COptional_CLocale)>>('CCategorySearchQueryBuilder_setLocale_COptional_CLocale');
-late final _CCategorySearchQueryBuilder_setLocale_COptional_CLocale = _CCategorySearchQueryBuilder_setLocale_COptional_CLocalePtr.asFunction<_CCategorySearchQueryBuilder Function(_CCategorySearchQueryBuilder, _COptional_CLocale)>();
-late final _CCategorySearchQueryBuilder_buildPtr = _lookup<ffi.NativeFunction<_CCategoryQuery Function(_CCategorySearchQueryBuilder)>>('CCategorySearchQueryBuilder_build');
-late final _CCategorySearchQueryBuilder_build = _CCategorySearchQueryBuilder_buildPtr.asFunction<_CCategoryQuery Function(_CCategorySearchQueryBuilder)>();
-late final _CCategorySearchQueryBuilder_C_createWith_CStringPtr = _lookup<ffi.NativeFunction<_CCategorySearchQueryBuilder Function(_CString)>>('CCategorySearchQueryBuilder_C_createWith_CString');
-late final _CCategorySearchQueryBuilder_C_createWith_CString = _CCategorySearchQueryBuilder_C_createWith_CStringPtr.asFunction<_CCategorySearchQueryBuilder Function(_CString)>();
-
-late final _CCategorySearchQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategorySearchQueryBuilder_release');
-late final _CCategorySearchQueryBuilder_release = _CCategorySearchQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategorySearchQueryBuilder_retainPtr = _lookup<ffi.NativeFunction<_CCategorySearchQueryBuilder Function(ffi.Pointer<ffi.Void>)>>('CCategorySearchQueryBuilder_retain');
-late final _CCategorySearchQueryBuilder_retain = _CCategorySearchQueryBuilder_retainPtr.asFunction<_CCategorySearchQueryBuilder Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategorySearchQueryBuilderMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategorySearchQueryBuilder Function()>>('CCategorySearchQueryBuilderMakeDefault');
-late final _CCategorySearchQueryBuilderMakeDefault = _CCategorySearchQueryBuilderMakeDefaultPtr.asFunction<_CCategorySearchQueryBuilder Function()>();
-
-
-late final _COptional_CCategoryGeoContextMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CCategoryGeoContext Function()>>('COptional_CCategoryGeoContextMakeDefault');
-late final _COptional_CCategoryGeoContextMakeDefault = _COptional_CCategoryGeoContextMakeDefaultPtr.asFunction<_COptional_CCategoryGeoContext Function()>();
-
-late final _CCategoryListQueryBuilder_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CCategoryListQueryBuilder_cg_objectIdentifier');
-late final _CCategoryListQueryBuilder_cg_objectIdentifier = _CCategoryListQueryBuilder_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
-
-late final _CCategoryListQueryBuilder_setParentId_COptional_CRubricIdPtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, _COptional_CRubricId)>>('CCategoryListQueryBuilder_setParentId_COptional_CRubricId');
-late final _CCategoryListQueryBuilder_setParentId_COptional_CRubricId = _CCategoryListQueryBuilder_setParentId_COptional_CRubricIdPtr.asFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, _COptional_CRubricId)>();
-late final _CCategoryListQueryBuilder_setSortType_CCategorySortTypePtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, _CCategorySortType)>>('CCategoryListQueryBuilder_setSortType_CCategorySortType');
-late final _CCategoryListQueryBuilder_setSortType_CCategorySortType = _CCategoryListQueryBuilder_setSortType_CCategorySortTypePtr.asFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, _CCategorySortType)>();
-late final _CCategoryListQueryBuilder_setGeoContext_COptional_CCategoryGeoContextPtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, _COptional_CCategoryGeoContext)>>('CCategoryListQueryBuilder_setGeoContext_COptional_CCategoryGeoContext');
-late final _CCategoryListQueryBuilder_setGeoContext_COptional_CCategoryGeoContext = _CCategoryListQueryBuilder_setGeoContext_COptional_CCategoryGeoContextPtr.asFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, _COptional_CCategoryGeoContext)>();
-late final _CCategoryListQueryBuilder_setPageSize_uint32_tPtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, ffi.Uint32)>>('CCategoryListQueryBuilder_setPageSize_uint32_t');
-late final _CCategoryListQueryBuilder_setPageSize_uint32_t = _CCategoryListQueryBuilder_setPageSize_uint32_tPtr.asFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, int)>();
-late final _CCategoryListQueryBuilder_setLocale_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, _COptional_CLocale)>>('CCategoryListQueryBuilder_setLocale_COptional_CLocale');
-late final _CCategoryListQueryBuilder_setLocale_COptional_CLocale = _CCategoryListQueryBuilder_setLocale_COptional_CLocalePtr.asFunction<_CCategoryListQueryBuilder Function(_CCategoryListQueryBuilder, _COptional_CLocale)>();
-late final _CCategoryListQueryBuilder_buildPtr = _lookup<ffi.NativeFunction<_CCategoryQuery Function(_CCategoryListQueryBuilder)>>('CCategoryListQueryBuilder_build');
-late final _CCategoryListQueryBuilder_build = _CCategoryListQueryBuilder_buildPtr.asFunction<_CCategoryQuery Function(_CCategoryListQueryBuilder)>();
-late final _CCategoryListQueryBuilder_C_createPtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function()>>('CCategoryListQueryBuilder_C_create');
-late final _CCategoryListQueryBuilder_C_create = _CCategoryListQueryBuilder_C_createPtr.asFunction<_CCategoryListQueryBuilder Function()>();
-
-late final _CCategoryListQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryListQueryBuilder_release');
-late final _CCategoryListQueryBuilder_release = _CCategoryListQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoryListQueryBuilder_retainPtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function(ffi.Pointer<ffi.Void>)>>('CCategoryListQueryBuilder_retain');
-late final _CCategoryListQueryBuilder_retain = _CCategoryListQueryBuilder_retainPtr.asFunction<_CCategoryListQueryBuilder Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoryListQueryBuilderMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function()>>('CCategoryListQueryBuilderMakeDefault');
-late final _CCategoryListQueryBuilderMakeDefault = _CCategoryListQueryBuilderMakeDefaultPtr.asFunction<_CCategoryListQueryBuilder Function()>();
-
-
-late final _CCategoryGetByIdsQueryBuilder_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CCategoryGetByIdsQueryBuilder_cg_objectIdentifier');
-late final _CCategoryGetByIdsQueryBuilder_cg_objectIdentifier = _CCategoryGetByIdsQueryBuilder_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
-
-late final _CCategoryGetByIdsQueryBuilder_setGeoContext_COptional_CCategoryGeoContextPtr = _lookup<ffi.NativeFunction<_CCategoryGetByIdsQueryBuilder Function(_CCategoryGetByIdsQueryBuilder, _COptional_CCategoryGeoContext)>>('CCategoryGetByIdsQueryBuilder_setGeoContext_COptional_CCategoryGeoContext');
-late final _CCategoryGetByIdsQueryBuilder_setGeoContext_COptional_CCategoryGeoContext = _CCategoryGetByIdsQueryBuilder_setGeoContext_COptional_CCategoryGeoContextPtr.asFunction<_CCategoryGetByIdsQueryBuilder Function(_CCategoryGetByIdsQueryBuilder, _COptional_CCategoryGeoContext)>();
-late final _CCategoryGetByIdsQueryBuilder_setLocale_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CCategoryGetByIdsQueryBuilder Function(_CCategoryGetByIdsQueryBuilder, _COptional_CLocale)>>('CCategoryGetByIdsQueryBuilder_setLocale_COptional_CLocale');
-late final _CCategoryGetByIdsQueryBuilder_setLocale_COptional_CLocale = _CCategoryGetByIdsQueryBuilder_setLocale_COptional_CLocalePtr.asFunction<_CCategoryGetByIdsQueryBuilder Function(_CCategoryGetByIdsQueryBuilder, _COptional_CLocale)>();
-late final _CCategoryGetByIdsQueryBuilder_buildPtr = _lookup<ffi.NativeFunction<_CCategoryQuery Function(_CCategoryGetByIdsQueryBuilder)>>('CCategoryGetByIdsQueryBuilder_build');
-late final _CCategoryGetByIdsQueryBuilder_build = _CCategoryGetByIdsQueryBuilder_buildPtr.asFunction<_CCategoryQuery Function(_CCategoryGetByIdsQueryBuilder)>();
-late final _CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricIdPtr = _lookup<ffi.NativeFunction<_CCategoryGetByIdsQueryBuilder Function(_CArray_CRubricId)>>('CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricId');
-late final _CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricId = _CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricIdPtr.asFunction<_CCategoryGetByIdsQueryBuilder Function(_CArray_CRubricId)>();
-
-late final _CCategoryGetByIdsQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryGetByIdsQueryBuilder_release');
-late final _CCategoryGetByIdsQueryBuilder_release = _CCategoryGetByIdsQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoryGetByIdsQueryBuilder_retainPtr = _lookup<ffi.NativeFunction<_CCategoryGetByIdsQueryBuilder Function(ffi.Pointer<ffi.Void>)>>('CCategoryGetByIdsQueryBuilder_retain');
-late final _CCategoryGetByIdsQueryBuilder_retain = _CCategoryGetByIdsQueryBuilder_retainPtr.asFunction<_CCategoryGetByIdsQueryBuilder Function(ffi.Pointer<ffi.Void>)>();
-late final _CCategoryGetByIdsQueryBuilderMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCategoryGetByIdsQueryBuilder Function()>>('CCategoryGetByIdsQueryBuilderMakeDefault');
-late final _CCategoryGetByIdsQueryBuilderMakeDefault = _CCategoryGetByIdsQueryBuilderMakeDefaultPtr.asFunction<_CCategoryGetByIdsQueryBuilder Function()>();
-
 
 late final _CChangeTypeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CChangeType Function()>>('CChangeTypeMakeDefault');
 late final _CChangeTypeMakeDefault = _CChangeTypeMakeDefaultPtr.asFunction<_CChangeType Function()>();
@@ -55000,14 +53251,16 @@ late final _CChannel_CChangeTypeConnect = _CChannel_CChangeTypeConnectPtr.asFunc
 >();
 late final _CPackedSearchQuery_queryTextPtr = _lookup<ffi.NativeFunction<_CString Function(_CPackedSearchQuery)>>('CPackedSearchQuery_queryText');
 late final _CPackedSearchQuery_queryText = _CPackedSearchQuery_queryTextPtr.asFunction<_CString Function(_CPackedSearchQuery)>();
-late final _CPackedSearchQuery_orgIdsPtr = _lookup<ffi.NativeFunction<_CArray_COrgId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_orgIds');
-late final _CPackedSearchQuery_orgIds = _CPackedSearchQuery_orgIdsPtr.asFunction<_CArray_COrgId Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_orgIdPtr = _lookup<ffi.NativeFunction<_COptional_COrgId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_orgId');
+late final _CPackedSearchQuery_orgId = _CPackedSearchQuery_orgIdPtr.asFunction<_COptional_COrgId Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_rubricIdsPtr = _lookup<ffi.NativeFunction<_CArray_CRubricId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_rubricIds');
 late final _CPackedSearchQuery_rubricIds = _CPackedSearchQuery_rubricIdsPtr.asFunction<_CArray_CRubricId Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_objectIdsPtr = _lookup<ffi.NativeFunction<_CArray_CDgisObjectId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_objectIds');
 late final _CPackedSearchQuery_objectIds = _CPackedSearchQuery_objectIdsPtr.asFunction<_CArray_CDgisObjectId Function(_CPackedSearchQuery)>();
-late final _CPackedSearchQuery_buildingIdsPtr = _lookup<ffi.NativeFunction<_CArray_CBuildingId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_buildingIds');
-late final _CPackedSearchQuery_buildingIds = _CPackedSearchQuery_buildingIdsPtr.asFunction<_CArray_CBuildingId Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_buildingIdPtr = _lookup<ffi.NativeFunction<_COptional_CBuildingId Function(_CPackedSearchQuery)>>('CPackedSearchQuery_buildingId');
+late final _CPackedSearchQuery_buildingId = _CPackedSearchQuery_buildingIdPtr.asFunction<_COptional_CBuildingId Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_spatialRestrictionPtr = _lookup<ffi.NativeFunction<_COptional_CArray_CGeoPoint Function(_CPackedSearchQuery)>>('CPackedSearchQuery_spatialRestriction');
+late final _CPackedSearchQuery_spatialRestriction = _CPackedSearchQuery_spatialRestrictionPtr.asFunction<_COptional_CArray_CGeoPoint Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_geometryRestrictionPtr = _lookup<ffi.NativeFunction<_COptional_CGeometry Function(_CPackedSearchQuery)>>('CPackedSearchQuery_geometryRestriction');
 late final _CPackedSearchQuery_geometryRestriction = _CPackedSearchQuery_geometryRestrictionPtr.asFunction<_COptional_CGeometry Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_areaOfInterestPtr = _lookup<ffi.NativeFunction<_COptional_CGeoRect Function(_CPackedSearchQuery)>>('CPackedSearchQuery_areaOfInterest');
@@ -55022,6 +53275,8 @@ late final _CPackedSearchQuery_directoryFilterPtr = _lookup<ffi.NativeFunction<_
 late final _CPackedSearchQuery_directoryFilter = _CPackedSearchQuery_directoryFilterPtr.asFunction<_CDirectoryFilter Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_sortingTypePtr = _lookup<ffi.NativeFunction<_CSortingType Function(_CPackedSearchQuery)>>('CPackedSearchQuery_sortingType');
 late final _CPackedSearchQuery_sortingType = _CPackedSearchQuery_sortingTypePtr.asFunction<_CSortingType Function(_CPackedSearchQuery)>();
+late final _CPackedSearchQuery_geoPointPtr = _lookup<ffi.NativeFunction<_COptional_CGeoPoint Function(_CPackedSearchQuery)>>('CPackedSearchQuery_geoPoint');
+late final _CPackedSearchQuery_geoPoint = _CPackedSearchQuery_geoPointPtr.asFunction<_COptional_CGeoPoint Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_radiusPtr = _lookup<ffi.NativeFunction<_COptional_CMeter Function(_CPackedSearchQuery)>>('CPackedSearchQuery_radius');
 late final _CPackedSearchQuery_radius = _CPackedSearchQuery_radiusPtr.asFunction<_COptional_CMeter Function(_CPackedSearchQuery)>();
 late final _CPackedSearchQuery_localePtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function(_CPackedSearchQuery)>>('CPackedSearchQuery_locale');
@@ -55130,20 +53385,6 @@ late final _forEach_CArray_CGeometry = _forEach_CArray_CGeometryPtr.asFunction<
 >>)>();
 late final _CArray_CGeometry_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CGeometry)>>('CArray_CGeometry_release');
 late final _CArray_CGeometry_release = _CArray_CGeometry_releasePtr.asFunction<void Function(_CArray_CGeometry)>();
-late final _CFunction_G_isGeoRectValid_With_CGeoRectPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect)>>('CFunction_G_isGeoRectValid_With_CGeoRect');
-late final _CFunction_G_isGeoRectValid_With_CGeoRect = _CFunction_G_isGeoRectValid_With_CGeoRectPtr.asFunction<bool Function(_CGeoRect)>();
-late final _CFunction_G_containsPoint_With_CGeoRect_CGeoPointPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect, _CGeoPoint)>>('CFunction_G_containsPoint_With_CGeoRect_CGeoPoint');
-late final _CFunction_G_containsPoint_With_CGeoRect_CGeoPoint = _CFunction_G_containsPoint_With_CGeoRect_CGeoPointPtr.asFunction<bool Function(_CGeoRect, _CGeoPoint)>();
-late final _CFunction_G_containsRect_With_CGeoRect_CGeoRectPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect, _CGeoRect)>>('CFunction_G_containsRect_With_CGeoRect_CGeoRect');
-late final _CFunction_G_containsRect_With_CGeoRect_CGeoRect = _CFunction_G_containsRect_With_CGeoRect_CGeoRectPtr.asFunction<bool Function(_CGeoRect, _CGeoRect)>();
-late final _CFunction_G_expandPoint_With_CGeoRect_CGeoPointPtr = _lookup<ffi.NativeFunction<_CGeoRect Function(_CGeoRect, _CGeoPoint)>>('CFunction_G_expandPoint_With_CGeoRect_CGeoPoint');
-late final _CFunction_G_expandPoint_With_CGeoRect_CGeoPoint = _CFunction_G_expandPoint_With_CGeoRect_CGeoPointPtr.asFunction<_CGeoRect Function(_CGeoRect, _CGeoPoint)>();
-late final _CFunction_G_expandRect_With_CGeoRect_CGeoRectPtr = _lookup<ffi.NativeFunction<_CGeoRect Function(_CGeoRect, _CGeoRect)>>('CFunction_G_expandRect_With_CGeoRect_CGeoRect');
-late final _CFunction_G_expandRect_With_CGeoRect_CGeoRect = _CFunction_G_expandRect_With_CGeoRect_CGeoRectPtr.asFunction<_CGeoRect Function(_CGeoRect, _CGeoRect)>();
-late final _CFunction_G_isDegenerate_With_CGeoRectPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect)>>('CFunction_G_isDegenerate_With_CGeoRect');
-late final _CFunction_G_isDegenerate_With_CGeoRect = _CFunction_G_isDegenerate_With_CGeoRectPtr.asFunction<bool Function(_CGeoRect)>();
-late final _CFunction_G_intersects_With_CGeoRect_CGeoRectPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CGeoRect, _CGeoRect)>>('CFunction_G_intersects_With_CGeoRect_CGeoRect');
-late final _CFunction_G_intersects_With_CGeoRect_CGeoRect = _CFunction_G_intersects_With_CGeoRect_CGeoRectPtr.asFunction<bool Function(_CGeoRect, _CGeoRect)>();
 late final _CFunction_G_downloadData_With_CContext_CStringPtr = _lookup<ffi.NativeFunction<_CFuture_CData Function(_CContext, _CString)>>('CFunction_G_downloadData_With_CContext_CString');
 late final _CFunction_G_downloadData_With_CContext_CString = _CFunction_G_downloadData_With_CContext_CStringPtr.asFunction<_CFuture_CData Function(_CContext, _CString)>();
 
@@ -55255,9 +53496,6 @@ late final _CGraphicsPresetMakeDefault = _CGraphicsPresetMakeDefaultPtr.asFuncti
 late final _CLabelingPriorityMakeDefaultPtr = _lookup<ffi.NativeFunction<_CLabelingPriority Function()>>('CLabelingPriorityMakeDefault');
 late final _CLabelingPriorityMakeDefault = _CLabelingPriorityMakeDefaultPtr.asFunction<_CLabelingPriority Function()>();
 
-
-late final _CUniverseDrawingModeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CUniverseDrawingMode Function()>>('CUniverseDrawingModeMakeDefault');
-late final _CUniverseDrawingModeMakeDefault = _CUniverseDrawingModeMakeDefaultPtr.asFunction<_CUniverseDrawingMode Function()>();
 
 late final _CZIndexMakeDefaultPtr = _lookup<ffi.NativeFunction<_CZIndex Function()>>('CZIndexMakeDefault');
 late final _CZIndexMakeDefault = _CZIndexMakeDefaultPtr.asFunction<_CZIndex Function()>();
@@ -56486,8 +54724,8 @@ late final _CStyleZoomFollowController_setStyleZoom_CStyleZoomPtr = _lookup<ffi.
 late final _CStyleZoomFollowController_setStyleZoom_CStyleZoom = _CStyleZoomFollowController_setStyleZoom_CStyleZoomPtr.asFunction<void Function(_CStyleZoomFollowController, _CStyleZoom)>();
 late final _CStyleZoomFollowController_setStyleZoomRange_CStyleZoom_CStyleZoomPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CStyleZoomFollowController, _CStyleZoom, _CStyleZoom)>>('CStyleZoomFollowController_setStyleZoomRange_CStyleZoom_CStyleZoom');
 late final _CStyleZoomFollowController_setStyleZoomRange_CStyleZoom_CStyleZoom = _CStyleZoomFollowController_setStyleZoomRange_CStyleZoom_CStyleZoomPtr.asFunction<void Function(_CStyleZoomFollowController, _CStyleZoom, _CStyleZoom)>();
-late final _CStyleZoomFollowController_C_createWith_CTimeIntervalPtr = _lookup<ffi.NativeFunction<_CResult_CStyleZoomFollowController Function(_CTimeInterval)>>('CStyleZoomFollowController_C_createWith_CTimeInterval');
-late final _CStyleZoomFollowController_C_createWith_CTimeInterval = _CStyleZoomFollowController_C_createWith_CTimeIntervalPtr.asFunction<_CResult_CStyleZoomFollowController Function(_CTimeInterval)>();
+late final _CStyleZoomFollowController_C_createWith_CTimeIntervalPtr = _lookup<ffi.NativeFunction<_CStyleZoomFollowController Function(_CTimeInterval)>>('CStyleZoomFollowController_C_createWith_CTimeInterval');
+late final _CStyleZoomFollowController_C_createWith_CTimeInterval = _CStyleZoomFollowController_C_createWith_CTimeIntervalPtr.asFunction<_CStyleZoomFollowController Function(_CTimeInterval)>();
 
 late final _CStyleZoomFollowController_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyleZoomFollowController_release');
 late final _CStyleZoomFollowController_release = _CStyleZoomFollowController_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
@@ -56496,9 +54734,6 @@ late final _CStyleZoomFollowController_retain = _CStyleZoomFollowController_reta
 late final _CStyleZoomFollowControllerMakeDefaultPtr = _lookup<ffi.NativeFunction<_CStyleZoomFollowController Function()>>('CStyleZoomFollowControllerMakeDefault');
 late final _CStyleZoomFollowControllerMakeDefault = _CStyleZoomFollowControllerMakeDefaultPtr.asFunction<_CStyleZoomFollowController Function()>();
 
-
-late final _CResult_CStyleZoomFollowController_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CResult_CStyleZoomFollowController)>>('CResult_CStyleZoomFollowController_release');
-late final _CResult_CStyleZoomFollowController_release = _CResult_CStyleZoomFollowController_releasePtr.asFunction<void Function(_CResult_CStyleZoomFollowController)>();
 
 late final _CStyleZoomToTiltRelationCpp_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CStyleZoomToTiltRelationCpp_cg_objectIdentifier');
 late final _CStyleZoomToTiltRelationCpp_cg_objectIdentifier = _CStyleZoomToTiltRelationCpp_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -56547,6 +54782,9 @@ late final _CTrafficSourceMakeDefaultPtr = _lookup<ffi.NativeFunction<_CTrafficS
 late final _CTrafficSourceMakeDefault = _CTrafficSourceMakeDefaultPtr.asFunction<_CTrafficSource Function()>();
 
 
+late final _CRoadEventDisplayCategoryMakeDefaultPtr = _lookup<ffi.NativeFunction<_CRoadEventDisplayCategory Function()>>('CRoadEventDisplayCategoryMakeDefault');
+late final _CRoadEventDisplayCategoryMakeDefault = _CRoadEventDisplayCategoryMakeDefaultPtr.asFunction<_CRoadEventDisplayCategory Function()>();
+
 late final _CRoadEventFilterDataMakeDefaultPtr = _lookup<ffi.NativeFunction<_CRoadEventFilterData Function()>>('CRoadEventFilterDataMakeDefault');
 late final _CRoadEventFilterDataMakeDefault = _CRoadEventFilterDataMakeDefaultPtr.asFunction<_CRoadEventFilterData Function()>();
 
@@ -56569,6 +54807,10 @@ late final _CRoadEventFilterMakeDefaultPtr = _lookup<ffi.NativeFunction<_CRoadEv
 late final _CRoadEventFilterMakeDefault = _CRoadEventFilterMakeDefaultPtr.asFunction<_CRoadEventFilter Function()>();
 late final _CRoadEventFilter_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CRoadEventFilter)>>('CRoadEventFilter_release');
 late final _CRoadEventFilter_release = _CRoadEventFilter_releasePtr.asFunction<void Function(_CRoadEventFilter)>();
+late final _CRoadEventSource_getVisibleEventsPtr = _lookup<ffi.NativeFunction<_COptionSet_CRoadEventDisplayCategory Function(_CRoadEventSource)>>('CRoadEventSource_getVisibleEvents');
+late final _CRoadEventSource_getVisibleEvents = _CRoadEventSource_getVisibleEventsPtr.asFunction<_COptionSet_CRoadEventDisplayCategory Function(_CRoadEventSource)>();
+late final _CRoadEventSource_setVisibleEvents_COptionSet_CRoadEventDisplayCategoryPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CRoadEventSource, _COptionSet_CRoadEventDisplayCategory)>>('CRoadEventSource_setVisibleEvents_COptionSet_CRoadEventDisplayCategory');
+late final _CRoadEventSource_setVisibleEvents_COptionSet_CRoadEventDisplayCategory = _CRoadEventSource_setVisibleEvents_COptionSet_CRoadEventDisplayCategoryPtr.asFunction<void Function(_CRoadEventSource, _COptionSet_CRoadEventDisplayCategory)>();
 late final _CRoadEventSource_roadEventFilterPtr = _lookup<ffi.NativeFunction<_COptional_CRoadEventFilter Function(_CRoadEventSource)>>('CRoadEventSource_roadEventFilter');
 late final _CRoadEventSource_roadEventFilter = _CRoadEventSource_roadEventFilterPtr.asFunction<_COptional_CRoadEventFilter Function(_CRoadEventSource)>();
 late final _CRoadEventSource_setRoadEventFilter_COptional_CRoadEventFilterPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CRoadEventSource, _COptional_CRoadEventFilter)>>('CRoadEventSource_setRoadEventFilter_COptional_CRoadEventFilter');
@@ -56583,8 +54825,8 @@ late final _CRoadEventSource_cg_objectIdentifier = _CRoadEventSource_cg_objectId
 
 late final _CRoadEventSource_setHighlighted_CArray_CDgisObjectId_boolPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CRoadEventSource, _CArray_CDgisObjectId, ffi.Bool)>>('CRoadEventSource_setHighlighted_CArray_CDgisObjectId_bool');
 late final _CRoadEventSource_setHighlighted_CArray_CDgisObjectId_bool = _CRoadEventSource_setHighlighted_CArray_CDgisObjectId_boolPtr.asFunction<void Function(_CRoadEventSource, _CArray_CDgisObjectId, bool)>();
-late final _CRoadEventSource_C_createWith_CContextPtr = _lookup<ffi.NativeFunction<_CResult_CRoadEventSource Function(_CContext)>>('CRoadEventSource_C_createWith_CContext');
-late final _CRoadEventSource_C_createWith_CContext = _CRoadEventSource_C_createWith_CContextPtr.asFunction<_CResult_CRoadEventSource Function(_CContext)>();
+late final _CRoadEventSource_C_createWith_CContextPtr = _lookup<ffi.NativeFunction<_CRoadEventSource Function(_CContext)>>('CRoadEventSource_C_createWith_CContext');
+late final _CRoadEventSource_C_createWith_CContext = _CRoadEventSource_C_createWith_CContextPtr.asFunction<_CRoadEventSource Function(_CContext)>();
 
 late final _CRoadEventSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventSource_release');
 late final _CRoadEventSource_release = _CRoadEventSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
@@ -56594,14 +54836,14 @@ late final _CRoadEventSourceMakeDefaultPtr = _lookup<ffi.NativeFunction<_CRoadEv
 late final _CRoadEventSourceMakeDefault = _CRoadEventSourceMakeDefaultPtr.asFunction<_CRoadEventSource Function()>();
 
 
+late final _COptionSet_CRoadEventDisplayCategoryMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptionSet_CRoadEventDisplayCategory Function()>>('COptionSet_CRoadEventDisplayCategoryMakeDefault');
+late final _COptionSet_CRoadEventDisplayCategoryMakeDefault = _COptionSet_CRoadEventDisplayCategoryMakeDefaultPtr.asFunction<_COptionSet_CRoadEventDisplayCategory Function()>();
+
 late final _COptional_CRoadEventFilterMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CRoadEventFilter Function()>>('COptional_CRoadEventFilterMakeDefault');
 late final _COptional_CRoadEventFilterMakeDefault = _COptional_CRoadEventFilterMakeDefaultPtr.asFunction<_COptional_CRoadEventFilter Function()>();
 
 late final _COptional_CRoadEventFilter_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CRoadEventFilter)>>('COptional_CRoadEventFilter_release');
 late final _COptional_CRoadEventFilter_release = _COptional_CRoadEventFilter_releasePtr.asFunction<void Function(_COptional_CRoadEventFilter)>();
-
-late final _CResult_CRoadEventSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CResult_CRoadEventSource)>>('CResult_CRoadEventSource_release');
-late final _CResult_CRoadEventSource_release = _CResult_CRoadEventSource_releasePtr.asFunction<void Function(_CResult_CRoadEventSource)>();
 
 late final _CDefaultRoadEventFilter_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CDefaultRoadEventFilter_cg_objectIdentifier');
 late final _CDefaultRoadEventFilter_cg_objectIdentifier = _CDefaultRoadEventFilter_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -56616,12 +54858,6 @@ late final _CDefaultRoadEventFilter_retain = _CDefaultRoadEventFilter_retainPtr.
 late final _CDefaultRoadEventFilterMakeDefaultPtr = _lookup<ffi.NativeFunction<_CDefaultRoadEventFilter Function()>>('CDefaultRoadEventFilterMakeDefault');
 late final _CDefaultRoadEventFilterMakeDefault = _CDefaultRoadEventFilterMakeDefaultPtr.asFunction<_CDefaultRoadEventFilter Function()>();
 
-
-late final _CRoadEventDisplayCategoryMakeDefaultPtr = _lookup<ffi.NativeFunction<_CRoadEventDisplayCategory Function()>>('CRoadEventDisplayCategoryMakeDefault');
-late final _CRoadEventDisplayCategoryMakeDefault = _CRoadEventDisplayCategoryMakeDefaultPtr.asFunction<_CRoadEventDisplayCategory Function()>();
-
-late final _COptionSet_CRoadEventDisplayCategoryMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptionSet_CRoadEventDisplayCategory Function()>>('COptionSet_CRoadEventDisplayCategoryMakeDefault');
-late final _COptionSet_CRoadEventDisplayCategoryMakeDefault = _COptionSet_CRoadEventDisplayCategoryMakeDefaultPtr.asFunction<_COptionSet_CRoadEventDisplayCategory Function()>();
 
 late final _COptional_COptionSet_CRoadEventDisplayCategoryMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_COptionSet_CRoadEventDisplayCategory Function()>>('COptional_COptionSet_CRoadEventDisplayCategoryMakeDefault');
 late final _COptional_COptionSet_CRoadEventDisplayCategoryMakeDefault = _COptional_COptionSet_CRoadEventDisplayCategoryMakeDefaultPtr.asFunction<_COptional_COptionSet_CRoadEventDisplayCategory Function()>();
@@ -57044,12 +55280,6 @@ late final _CMap_graphicsPresetPtr = _lookup<ffi.NativeFunction<_COptional_CGrap
 late final _CMap_graphicsPreset = _CMap_graphicsPresetPtr.asFunction<_COptional_CGraphicsPreset Function(_CMap)>();
 late final _CMap_setGraphicsPreset_COptional_CGraphicsPresetPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMap, _COptional_CGraphicsPreset)>>('CMap_setGraphicsPreset_COptional_CGraphicsPreset');
 late final _CMap_setGraphicsPreset_COptional_CGraphicsPreset = _CMap_setGraphicsPreset_COptional_CGraphicsPresetPtr.asFunction<void Function(_CMap, _COptional_CGraphicsPreset)>();
-late final _CMap_universeDrawingModeChannelPtr = _lookup<ffi.NativeFunction<_CStatefulChannel_CUniverseDrawingMode Function(_CMap)>>('CMap_universeDrawingModeChannel');
-late final _CMap_universeDrawingModeChannel = _CMap_universeDrawingModeChannelPtr.asFunction<_CStatefulChannel_CUniverseDrawingMode Function(_CMap)>();
-late final _CMap_universeDrawingModePtr = _lookup<ffi.NativeFunction<_CUniverseDrawingMode Function(_CMap)>>('CMap_universeDrawingMode');
-late final _CMap_universeDrawingMode = _CMap_universeDrawingModePtr.asFunction<_CUniverseDrawingMode Function(_CMap)>();
-late final _CMap_setUniverseDrawingMode_CUniverseDrawingModePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMap, _CUniverseDrawingMode)>>('CMap_setUniverseDrawingMode_CUniverseDrawingMode');
-late final _CMap_setUniverseDrawingMode_CUniverseDrawingMode = _CMap_setUniverseDrawingMode_CUniverseDrawingModePtr.asFunction<void Function(_CMap, _CUniverseDrawingMode)>();
 
 late final _CMap_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CMap_cg_objectIdentifier');
 late final _CMap_cg_objectIdentifier = _CMap_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
@@ -57355,29 +55585,6 @@ late final _CStatefulChannel_COptional_CGraphicsPresetConnect = _CStatefulChanne
 
 late final _COptional_CGraphicsPresetMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CGraphicsPreset Function()>>('COptional_CGraphicsPresetMakeDefault');
 late final _COptional_CGraphicsPresetMakeDefault = _COptional_CGraphicsPresetMakeDefaultPtr.asFunction<_COptional_CGraphicsPreset Function()>();
-
-late final _CStatefulChannel_CUniverseDrawingModeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CStatefulChannel_CUniverseDrawingMode Function()>>('CStatefulChannel_CUniverseDrawingModeMakeDefault');
-late final _CStatefulChannel_CUniverseDrawingModeMakeDefault = _CStatefulChannel_CUniverseDrawingModeMakeDefaultPtr.asFunction<_CStatefulChannel_CUniverseDrawingMode Function()>();
-late final _CStatefulChannel_CUniverseDrawingMode_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CStatefulChannel_CUniverseDrawingMode)>>('CStatefulChannel_CUniverseDrawingMode_release');
-late final _CStatefulChannel_CUniverseDrawingMode_release = _CStatefulChannel_CUniverseDrawingMode_releasePtr.asFunction<void Function(_CStatefulChannel_CUniverseDrawingMode)>();
-late final _CStatefulChannel_CUniverseDrawingMode_retainPtr = _lookup<ffi.NativeFunction<_CStatefulChannel_CUniverseDrawingMode Function(_CStatefulChannel_CUniverseDrawingMode)>>('CStatefulChannel_CUniverseDrawingMode_retain');
-late final _CStatefulChannel_CUniverseDrawingMode_retain = _CStatefulChannel_CUniverseDrawingMode_retainPtr.asFunction<_CStatefulChannel_CUniverseDrawingMode Function(_CStatefulChannel_CUniverseDrawingMode)>();
-late final _CStatefulChannel_CUniverseDrawingModeGetCurrentValuePtr = _lookup<ffi.NativeFunction<_CUniverseDrawingMode Function(_CStatefulChannel_CUniverseDrawingMode)>>('CStatefulChannel_CUniverseDrawingMode_getCurrentValue');
-late final _CStatefulChannel_CUniverseDrawingModeGetCurrentValue = _CStatefulChannel_CUniverseDrawingModeGetCurrentValuePtr.asFunction<_CUniverseDrawingMode Function(_CStatefulChannel_CUniverseDrawingMode)>();
-late final _CStatefulChannel_CUniverseDrawingModeConnectPtr = _lookup<ffi.NativeFunction<
-  _CCancellable Function(
-    _CStatefulChannel_CUniverseDrawingMode,
-    ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>>
-  )
->>('CStatefulChannel_CUniverseDrawingMode_connect');
-late final _CStatefulChannel_CUniverseDrawingModeConnect = _CStatefulChannel_CUniverseDrawingModeConnectPtr.asFunction<
-  _CCancellable Function(
-    _CStatefulChannel_CUniverseDrawingMode,
-    int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>>
-  )
->();
 
 late final _CFuture_COptional_CRenderedObjectInfoMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CRenderedObjectInfo Function()>>('CFuture_COptional_CRenderedObjectInfoMakeDefault');
 late final _CFuture_COptional_CRenderedObjectInfoMakeDefault = _CFuture_COptional_CRenderedObjectInfoMakeDefaultPtr.asFunction<_CFuture_COptional_CRenderedObjectInfo Function()>();
@@ -58167,15 +56374,12 @@ late final _CFunction_G_zoomOutToFitForGeometry_With_CBaseCamera_CGeometry_COpti
 late final _CFunction_G_zoomOutToFitForGeometry_With_CBaseCamera_CGeometry_COptional_CStyleZoomToTiltRelation_COptional_CScreenSize = _CFunction_G_zoomOutToFitForGeometry_With_CBaseCamera_CGeometry_COptional_CStyleZoomToTiltRelation_COptional_CScreenSizePtr.asFunction<_CCameraPosition Function(_CBaseCamera, _CGeometry, _COptional_CStyleZoomToTiltRelation, _COptional_CScreenSize)>();
 late final _CFunction_G_zoomOutToFitForObjects_With_CBaseCamera_CArray_CSimpleMapObject_COptional_CStyleZoomToTiltRelation_COptional_CScreenSizePtr = _lookup<ffi.NativeFunction<_CCameraPosition Function(_CBaseCamera, _CArray_CSimpleMapObject, _COptional_CStyleZoomToTiltRelation, _COptional_CScreenSize)>>('CFunction_G_zoomOutToFitForObjects_With_CBaseCamera_CArray_CSimpleMapObject_COptional_CStyleZoomToTiltRelation_COptional_CScreenSize');
 late final _CFunction_G_zoomOutToFitForObjects_With_CBaseCamera_CArray_CSimpleMapObject_COptional_CStyleZoomToTiltRelation_COptional_CScreenSize = _CFunction_G_zoomOutToFitForObjects_With_CBaseCamera_CArray_CSimpleMapObject_COptional_CStyleZoomToTiltRelation_COptional_CScreenSizePtr.asFunction<_CCameraPosition Function(_CBaseCamera, _CArray_CSimpleMapObject, _COptional_CStyleZoomToTiltRelation, _COptional_CScreenSize)>();
-late final _CFunction_G_createDefaultMaxTiltRestrictionPtr = _lookup<ffi.NativeFunction<_CResult_CStyleZoomToTiltRelation Function()>>('CFunction_G_createDefaultMaxTiltRestriction');
-late final _CFunction_G_createDefaultMaxTiltRestriction = _CFunction_G_createDefaultMaxTiltRestrictionPtr.asFunction<_CResult_CStyleZoomToTiltRelation Function()>();
-
-late final _CResult_CStyleZoomToTiltRelation_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CResult_CStyleZoomToTiltRelation)>>('CResult_CStyleZoomToTiltRelation_release');
-late final _CResult_CStyleZoomToTiltRelation_release = _CResult_CStyleZoomToTiltRelation_releasePtr.asFunction<void Function(_CResult_CStyleZoomToTiltRelation)>();
-late final _CFunction_G_createDefaultStyleZoomToTiltRelationPtr = _lookup<ffi.NativeFunction<_CResult_CStyleZoomToTiltRelation Function()>>('CFunction_G_createDefaultStyleZoomToTiltRelation');
-late final _CFunction_G_createDefaultStyleZoomToTiltRelation = _CFunction_G_createDefaultStyleZoomToTiltRelationPtr.asFunction<_CResult_CStyleZoomToTiltRelation Function()>();
-late final _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTiltPtr = _lookup<ffi.NativeFunction<_CResult_CStyleZoomToTiltRelation Function(_CDictionary_CStyleZoom_CTilt)>>('CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTilt');
-late final _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTilt = _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTiltPtr.asFunction<_CResult_CStyleZoomToTiltRelation Function(_CDictionary_CStyleZoom_CTilt)>();
+late final _CFunction_G_createDefaultMaxTiltRestrictionPtr = _lookup<ffi.NativeFunction<_CStyleZoomToTiltRelation Function()>>('CFunction_G_createDefaultMaxTiltRestriction');
+late final _CFunction_G_createDefaultMaxTiltRestriction = _CFunction_G_createDefaultMaxTiltRestrictionPtr.asFunction<_CStyleZoomToTiltRelation Function()>();
+late final _CFunction_G_createDefaultStyleZoomToTiltRelationPtr = _lookup<ffi.NativeFunction<_CStyleZoomToTiltRelation Function()>>('CFunction_G_createDefaultStyleZoomToTiltRelation');
+late final _CFunction_G_createDefaultStyleZoomToTiltRelation = _CFunction_G_createDefaultStyleZoomToTiltRelationPtr.asFunction<_CStyleZoomToTiltRelation Function()>();
+late final _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTiltPtr = _lookup<ffi.NativeFunction<_CStyleZoomToTiltRelation Function(_CDictionary_CStyleZoom_CTilt)>>('CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTilt');
+late final _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTilt = _CFunction_G_createStyleZoomToTiltRelation_With_CDictionary_CStyleZoom_CTiltPtr.asFunction<_CStyleZoomToTiltRelation Function(_CDictionary_CStyleZoom_CTilt)>();
 
 late final _CDictionary_CStyleZoom_CTiltmakeEmptyPtr = _lookup<ffi.NativeFunction<_CDictionary_CStyleZoom_CTilt Function()>>('CDictionary_CStyleZoom_CTilt_makeEmpty');
 late final _CDictionary_CStyleZoom_CTiltmakeEmpty = _CDictionary_CStyleZoom_CTiltmakeEmptyPtr.asFunction<_CDictionary_CStyleZoom_CTilt Function()>();
@@ -58284,15 +56488,6 @@ late final _CFpsMakeDefault = _CFpsMakeDefaultPtr.asFunction<_CFps Function()>()
 
 late final _COptional_CCameraPositionMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CCameraPosition Function()>>('COptional_CCameraPositionMakeDefault');
 late final _COptional_CCameraPositionMakeDefault = _COptional_CCameraPositionMakeDefaultPtr.asFunction<_COptional_CCameraPosition Function()>();
-
-late final _COptional_CCameraZoomRestrictionsMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CCameraZoomRestrictions Function()>>('COptional_CCameraZoomRestrictionsMakeDefault');
-late final _COptional_CCameraZoomRestrictionsMakeDefault = _COptional_CCameraZoomRestrictionsMakeDefaultPtr.asFunction<_COptional_CCameraZoomRestrictions Function()>();
-
-late final _COptional_CFileMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CFile Function()>>('COptional_CFileMakeDefault');
-late final _COptional_CFileMakeDefault = _COptional_CFileMakeDefaultPtr.asFunction<_COptional_CFile Function()>();
-
-late final _COptional_CFile_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CFile)>>('COptional_CFile_release');
-late final _COptional_CFile_release = _COptional_CFile_releasePtr.asFunction<void Function(_COptional_CFile)>();
 
 late final _COptional_CFpsMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CFps Function()>>('COptional_CFpsMakeDefault');
 late final _COptional_CFpsMakeDefault = _COptional_CFpsMakeDefaultPtr.asFunction<_COptional_CFps Function()>();
@@ -58570,8 +56765,8 @@ late final _CGestureManager_scalingSettingsPtr = _lookup<ffi.NativeFunction<_CSc
 late final _CGestureManager_scalingSettings = _CGestureManager_scalingSettingsPtr.asFunction<_CScalingGestureSettings Function(_CGestureManager)>();
 late final _CGestureManager_rotationSettingsPtr = _lookup<ffi.NativeFunction<_CRotationGestureSettings Function(_CGestureManager)>>('CGestureManager_rotationSettings');
 late final _CGestureManager_rotationSettings = _CGestureManager_rotationSettingsPtr.asFunction<_CRotationGestureSettings Function(_CGestureManager)>();
-late final _CGestureManager_multiTouchShiftSettingsPtr = _lookup<ffi.NativeFunction<_CMultiTouchGestureSettings Function(_CGestureManager)>>('CGestureManager_multiTouchShiftSettings');
-late final _CGestureManager_multiTouchShiftSettings = _CGestureManager_multiTouchShiftSettingsPtr.asFunction<_CMultiTouchGestureSettings Function(_CGestureManager)>();
+late final _CGestureManager_multitouchShiftSettingsPtr = _lookup<ffi.NativeFunction<_CMultiTouchGestureSettings Function(_CGestureManager)>>('CGestureManager_multitouchShiftSettings');
+late final _CGestureManager_multitouchShiftSettings = _CGestureManager_multitouchShiftSettingsPtr.asFunction<_CMultiTouchGestureSettings Function(_CGestureManager)>();
 late final _CGestureManager_tiltSettingsPtr = _lookup<ffi.NativeFunction<_CTiltGestureSettings Function(_CGestureManager)>>('CGestureManager_tiltSettings');
 late final _CGestureManager_tiltSettings = _CGestureManager_tiltSettingsPtr.asFunction<_CTiltGestureSettings Function(_CGestureManager)>();
 late final _CGestureManager_commonSettingsPtr = _lookup<ffi.NativeFunction<_CCommonGestureSettings Function(_CGestureManager)>>('CGestureManager_commonSettings');

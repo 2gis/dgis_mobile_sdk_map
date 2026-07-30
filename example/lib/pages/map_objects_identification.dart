@@ -20,7 +20,7 @@ class MapObjectsIdentificationPage extends StatefulWidget {
 class _MapObjectsIdentificationState
     extends State<MapObjectsIdentificationPage> {
   final sdkContext = AppContainer().initializeSdk();
-  sdk.MapWidgetController? mapWidgetController;
+  final mapWidgetController = sdk.MapWidgetController();
   final formKey = GlobalKey<FormState>();
   bool isParkingEnabled = false;
   bool isTUGCEnabled = false;
@@ -49,25 +49,16 @@ class _MapObjectsIdentificationState
   }
 
   @override
-  void dispose() {
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final currentMapWidgetController = mapWidgetController;
-
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       body: Stack(
         children: <Widget>[
-          if (currentMapWidgetController == null)
-            const SizedBox.shrink()
-          else
-            sdk.MapWidget(
-              sdkContext: sdkContext,
-              controller: currentMapWidgetController,
-            ),
+          sdk.MapWidget(
+            sdkContext: sdkContext,
+            mapOptions: sdk.MapOptions(),
+            controller: mapWidgetController,
+          ),
           if (selectedDirectoryObject == null)
             Align(
               alignment: Alignment.bottomRight,
@@ -140,38 +131,27 @@ class _MapObjectsIdentificationState
     roadEventSource = sdk.RoadEventSource(sdkContext);
 
     await checkLocationPermissions(locationService);
+    mapWidgetController
+      ..getMapAsync((map) {
+        sdkMap = map;
+        mapObjectManager = sdk.MapObjectManager(map);
+        const locationController = sdk.MyLocationControllerSettings(
+          bearingSource: sdk.BearingSource.satellite,
+        );
+        locationSource =
+            sdk.MyLocationMapObjectSource(sdkContext, locationController);
+        map.addSource(locationSource);
 
-    final createdMapWidgetController = await createMapWidgetController(
-      sdkContext,
-      controllerOptions: const sdk.MapControllerOptions(
-        position: sdk.CameraPosition(
+        map.camera.position = const sdk.CameraPosition(
           point: sdk.GeoPoint(
             latitude: sdk.Latitude(55.75),
             longitude: sdk.Longitude(37.62),
           ),
           zoom: sdk.Zoom(12),
-        ),
-      ),
-    );
-    if (!mounted) {
-      return;
-    }
-
-    final map = createdMapWidgetController.map;
-    sdkMap = map;
-    mapObjectManager = sdk.MapObjectManager(map);
-    const locationController = sdk.MyLocationControllerSettings(
-      bearingSource: sdk.BearingSource.satellite,
-    );
-    locationSource =
-        sdk.MyLocationMapObjectSource(sdkContext, locationController);
-    map.addSource(locationSource);
-
-    setState(() {
-      mapWidgetController = createdMapWidgetController
-        ..addObjectLongTouchCallback(_showObjectCard)
-        ..addObjectTappedCallback(_handleObjectTapped);
-    });
+        );
+      })
+      ..addObjectLongTouchCallback(_showObjectCard)
+      ..addObjectTappedCallback(_handleObjectTapped);
   }
 
   Future<void> _handleObjectTapped(sdk.RenderedObjectInfo objectInfo) async {
@@ -197,9 +177,9 @@ class _MapObjectsIdentificationState
       }
       await _setSelectedObject(objectInfo);
       dgisSource = objectInfo.item.source as sdk.DgisSource;
-      final directoryObjects =
-          await searchManager.searchByDirectoryObjectIds([objectId]).value;
-      _showDirectoryObjectCard(directoryObjects.firstOrNull);
+      final directoryObject =
+          await searchManager.searchByDirectoryObjectId(objectId).value;
+      _showDirectoryObjectCard(directoryObject);
       return;
     }
   }
