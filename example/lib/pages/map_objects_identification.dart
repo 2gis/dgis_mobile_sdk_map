@@ -20,7 +20,19 @@ class MapObjectsIdentificationPage extends StatefulWidget {
 class _MapObjectsIdentificationState
     extends State<MapObjectsIdentificationPage> {
   final sdkContext = AppContainer().initializeSdk();
-  final mapWidgetController = sdk.MapWidgetController();
+  late final sdk.MapWidgetController mapWidgetController =
+      createMapWidgetController(
+    sdkContext,
+    controllerOptions: const sdk.MapControllerOptions(
+      position: sdk.CameraPosition(
+        point: sdk.GeoPoint(
+          latitude: sdk.Latitude(55.75),
+          longitude: sdk.Longitude(37.62),
+        ),
+        zoom: sdk.Zoom(12),
+      ),
+    ),
+  );
   final formKey = GlobalKey<FormState>();
   bool isParkingEnabled = false;
   bool isTUGCEnabled = false;
@@ -33,7 +45,6 @@ class _MapObjectsIdentificationState
   sdk.MapObjectManager? mapObjectManager;
   sdk.Marker? selectedObject;
   sdk.DgisSource? dgisSource;
-  sdk.Map? sdkMap;
 
   late sdk.SearchManager searchManager;
   late sdk.ImageLoader loader;
@@ -49,6 +60,11 @@ class _MapObjectsIdentificationState
   }
 
   @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
@@ -56,7 +72,6 @@ class _MapObjectsIdentificationState
         children: <Widget>[
           sdk.MapWidget(
             sdkContext: sdkContext,
-            mapOptions: sdk.MapOptions(),
             controller: mapWidgetController,
           ),
           if (selectedDirectoryObject == null)
@@ -73,12 +88,8 @@ class _MapObjectsIdentificationState
                       onChanged: (value) {
                         setState(() {
                           isTUGCEnabled = value;
-                          if (isTUGCEnabled) {
-                            sdkMap?.addSource(roadEventSource);
-                          } else {
-                            sdkMap?.removeSource(roadEventSource);
-                          }
                         });
+                        unawaited(_updateRoadEventSource(value));
                       },
                     ),
                     SwitchListTile(
@@ -87,11 +98,8 @@ class _MapObjectsIdentificationState
                       onChanged: (value) {
                         setState(() {
                           isParkingEnabled = value;
-                          sdkMap?.attributes.setAttributeValue(
-                            'parkingOn',
-                            sdk.AttributeValue.boolean(value),
-                          );
                         });
+                        unawaited(_updateParkingAttribute(value));
                       },
                     ),
                     SwitchListTile(
@@ -100,12 +108,12 @@ class _MapObjectsIdentificationState
                       onChanged: (value) {
                         setState(() {
                           isCircleEnabled = value;
-                          if (isCircleEnabled) {
-                            _addCircle();
-                          } else {
-                            mapObjectManager?.removeAll();
-                          }
                         });
+                        if (isCircleEnabled) {
+                          unawaited(_addCircle());
+                        } else {
+                          mapObjectManager?.removeAll();
+                        }
                       },
                     ),
                   ],
@@ -131,27 +139,23 @@ class _MapObjectsIdentificationState
     roadEventSource = sdk.RoadEventSource(sdkContext);
 
     await checkLocationPermissions(locationService);
-    mapWidgetController
-      ..getMapAsync((map) {
-        sdkMap = map;
-        mapObjectManager = sdk.MapObjectManager(map);
-        const locationController = sdk.MyLocationControllerSettings(
-          bearingSource: sdk.BearingSource.satellite,
-        );
-        locationSource =
-            sdk.MyLocationMapObjectSource(sdkContext, locationController);
-        map.addSource(locationSource);
 
-        map.camera.position = const sdk.CameraPosition(
-          point: sdk.GeoPoint(
-            latitude: sdk.Latitude(55.75),
-            longitude: sdk.Longitude(37.62),
-          ),
-          zoom: sdk.Zoom(12),
-        );
-      })
+    final map = await mapWidgetController.mapAsync;
+    if (!mounted) {
+      return;
+    }
+    mapObjectManager = sdk.MapObjectManager(map);
+    const locationController = sdk.MyLocationControllerSettings(
+      bearingSource: sdk.BearingSource.satellite,
+    );
+    locationSource =
+        sdk.MyLocationMapObjectSource(sdkContext, locationController);
+    map.addSource(locationSource);
+
+    mapWidgetController
       ..addObjectLongTouchCallback(_showObjectCard)
       ..addObjectTappedCallback(_handleObjectTapped);
+    setState(() {});
   }
 
   Future<void> _handleObjectTapped(sdk.RenderedObjectInfo objectInfo) async {
@@ -177,11 +181,28 @@ class _MapObjectsIdentificationState
       }
       await _setSelectedObject(objectInfo);
       dgisSource = objectInfo.item.source as sdk.DgisSource;
-      final directoryObject =
-          await searchManager.searchByDirectoryObjectId(objectId).value;
-      _showDirectoryObjectCard(directoryObject);
+      final directoryObjects =
+          await searchManager.searchByDirectoryObjectIds([objectId]).value;
+      _showDirectoryObjectCard(directoryObjects.firstOrNull);
       return;
     }
+  }
+
+  Future<void> _updateRoadEventSource(bool isEnabled) async {
+    final map = await mapWidgetController.mapAsync;
+    if (isEnabled) {
+      map.addSource(roadEventSource);
+    } else {
+      map.removeSource(roadEventSource);
+    }
+  }
+
+  Future<void> _updateParkingAttribute(bool isEnabled) async {
+    final map = await mapWidgetController.mapAsync;
+    map.attributes.setAttributeValue(
+      'parkingOn',
+      sdk.AttributeValue.boolean(isEnabled),
+    );
   }
 
   void _showObjectCard(sdk.RenderedObjectInfo objectInfo) {
@@ -488,7 +509,7 @@ class _MapObjectsIdentificationState
     _setHighlighted(objectInfo);
 
     String? distance;
-    final myLocation = locationService.lastLocation().value;
+    final myLocation = locationService.lastLocation;
     final objectPosition = objectInfo.markerPosition;
     if (myLocation != null && objectPosition != null) {
       final localizations =
@@ -540,10 +561,11 @@ class _MapObjectsIdentificationState
     dgisSource?.setHighlighted(highlightedObjectIds, true);
   }
 
-  void _addCircle() {
+  Future<void> _addCircle() async {
+    final map = await mapWidgetController.mapAsync;
     final circlePosition = sdk.GeoPoint(
-      latitude: sdk.Latitude(sdkMap!.camera.position.point.latitude.value),
-      longitude: sdk.Longitude(sdkMap!.camera.position.point.longitude.value),
+      latitude: sdk.Latitude(map.camera.position.point.latitude.value),
+      longitude: sdk.Longitude(map.camera.position.point.longitude.value),
     );
     circle = sdk.Circle(
       sdk.CircleOptions(

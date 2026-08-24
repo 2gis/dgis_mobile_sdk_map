@@ -51,3 +51,13 @@ class AppContainer {
     return _sdkContext!;
   }
 }
+
+sdk.MapWidgetController createMapWidgetController(
+  sdk.Context sdkContext, {
+  sdk.MapControllerOptions controllerOptions = const sdk.MapControllerOptions(),
+}) {
+  return sdk.MapWidgetController(
+    sdkContext,
+    controllerOptions: controllerOptions,
+  );
+}
