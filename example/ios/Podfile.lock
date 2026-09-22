@@ -1,8 +1,8 @@
 PODS:
-  - dgis_mobile_sdk_map (14.0.0):
-    - "DGisFlutterMapSDK (~> 14.0.0+2)"
+  - dgis_mobile_sdk_map (14.1.0):
+    - "DGisFlutterMapSDK (= 14.1.0+1)"
     - Flutter
-  - "DGisFlutterMapSDK (14.0.0+2)"
+  - "DGisFlutterMapSDK (14.1.0+1)"
   - Flutter (1.0.0)
   - integration_test (0.0.1):
     - Flutter
@@ -45,8 +45,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/wakelock_plus/ios"
 
 SPEC CHECKSUMS:
-  dgis_mobile_sdk_map: 3054e34be6d55197a54e22c3260cfca5585db581
-  DGisFlutterMapSDK: a16ae30a7935bc258d2cd61a7bd87252f216febb
+  dgis_mobile_sdk_map: 5d1565dd2074b3ad94a9a60e414743f8fe84ad39
+  DGisFlutterMapSDK: 354974bc82789b45750e38d7f61295d02ef37367
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499

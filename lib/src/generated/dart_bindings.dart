@@ -29895,6 +29895,18 @@ class DgisSource extends Source implements ffi.Finalizable {
     return t;
   }
 
+  /** Создание источника, получающего рельеф с серверов 2ГИС. */
+  static Source createReliefDgisSource(
+    Context context
+  )  {
+    var _a0 = context._copyFromDartTo_CContext();
+    _CSource res = _CDgisSource_S_createReliefDgisSource_CContext(_a0);
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
   // MARK: DgisSource: Methods
 
   /**
@@ -36779,6 +36791,231 @@ extension _CMapThemeRelease on _CMapTheme {
   }
 }
 
+// MARK: - BySystem
+
+class BySystem {
+  final MapTheme light;
+  final MapTheme dark;
+
+  const BySystem({
+    required this.light,
+    required this.dark
+  });
+
+  BySystem copyWith({
+    MapTheme? light,
+    MapTheme? dark
+  }) {
+    return BySystem(
+      light: light ?? this.light,
+      dark: dark ?? this.dark
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is BySystem &&
+    other.runtimeType == runtimeType &&
+    other.light == light &&
+    other.dark == dark;
+
+  @override
+  int get hashCode {
+    return Object.hash(light, dark);
+  }
+
+}
+final class _CBySystem extends ffi.Struct {
+  external _CMapTheme light;
+
+  external _CMapTheme dark;
+
+}
+// MARK: - BySystem <-> _CBySystem
+
+extension _CBySystemToDart on _CBySystem {
+  BySystem _toDart() {
+    return BySystem(
+      light: this.light._toDart(),
+      dark: this.dark._toDart()
+    );
+  }
+}
+
+extension _DartTo_CBySystem on BySystem {
+  _CBySystem _copyFromDartTo_CBySystem() {
+    final res = _CBySystemMakeDefault();
+    res.light = this.light._copyFromDartTo_CMapTheme();
+    res.dark = this.dark._copyFromDartTo_CMapTheme();
+    return res;
+  }
+}
+extension _CBySystemRelease on _CBySystem {
+  void _releaseIntermediate() {
+    light._releaseIntermediate();
+    dark._releaseIntermediate();
+  }
+}
+
+// MARK: - Fixed
+
+class Fixed {
+  final MapTheme theme;
+
+  const Fixed(this.theme);
+
+  Fixed copyWith({
+    MapTheme? theme
+  }) {
+    return Fixed(
+      theme ?? this.theme
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is Fixed &&
+    other.runtimeType == runtimeType &&
+    other.theme == theme;
+
+  @override
+  int get hashCode {
+    return theme.hashCode;
+  }
+
+}
+final class _CFixed extends ffi.Struct {
+  external _CMapTheme theme;
+
+}
+// MARK: - Fixed <-> _CFixed
+
+extension _CFixedToDart on _CFixed {
+  Fixed _toDart() {
+    return Fixed(
+      this.theme._toDart()
+    );
+  }
+}
+
+extension _DartTo_CFixed on Fixed {
+  _CFixed _copyFromDartTo_CFixed() {
+    final res = _CFixedMakeDefault();
+    res.theme = this.theme._copyFromDartTo_CMapTheme();
+    return res;
+  }
+}
+extension _CFixedRelease on _CFixed {
+  void _releaseIntermediate() {
+    theme._releaseIntermediate();
+  }
+}
+
+// MARK: - MapAppearance
+
+final class MapAppearance {
+  final Object? _value;
+  final int _index;
+
+  MapAppearance._raw(this._value, this._index);
+
+  MapAppearance.bySystem(BySystem value) : this._raw(value, 0);
+  MapAppearance.fixed(Fixed value) : this._raw(value, 1);
+
+  bool get isBySystem => this._index == 0;
+  BySystem? get asBySystem => this.isBySystem ? this._value as BySystem : null;
+
+  bool get isFixed => this._index == 1;
+  Fixed? get asFixed => this.isFixed ? this._value as Fixed : null;
+
+  T match<T>({
+    required T Function(BySystem value) bySystem,
+    required T Function(Fixed value) fixed,
+  }) {
+    return switch (this._index) {
+      0 => bySystem(this._value as BySystem),
+      1 => fixed(this._value as Fixed),
+      _ => throw NativeException("Unrecognized case index ${this._index}")
+    };
+  }
+
+  @override
+  String toString() => "MapAppearance(${this._value})";
+
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is MapAppearance &&
+    other.runtimeType == runtimeType &&
+    other._value == this._value && other._index == this._index;
+
+  @override
+  int get hashCode => Object.hash(this._index, this._value);
+}
+
+final class _CMapAppearanceImpl extends ffi.Union {
+  external _CBySystem _bySystem;
+  external _CFixed _fixed;
+}
+
+final class _CMapAppearance extends ffi.Struct {
+  external _CMapAppearanceImpl _impl;
+  @ffi.Uint8()
+  external int _index;
+}
+
+extension _CMapAppearanceBasicFunctions on _CMapAppearance {
+  void _releaseIntermediate() {
+    _CMapAppearance_release(this);
+  }
+}
+	
+// MARK: - MapAppearance <-> CMapAppearance
+
+extension _CMapAppearanceToDart on _CMapAppearance {
+  MapAppearance _toDart() {
+    return switch (this._index) {
+      0 => MapAppearance.bySystem(this._impl._bySystem._toDart()),
+      1 => MapAppearance.fixed(this._impl._fixed._toDart()),
+      _ => throw NativeException("Unrecognized case index ${this._index}")
+    };
+  }
+}
+
+extension _DartTo_CMapAppearance on MapAppearance {
+  _CMapAppearance _copyFromDartTo_CMapAppearance() {
+    var res = _CMapAppearanceMakeDefault();
+    this.match<void>(
+      bySystem: (BySystem value) {
+        res._impl._bySystem = value._copyFromDartTo_CBySystem();
+        res._index = 0;
+      },
+      fixed: (Fixed value) {
+        res._impl._fixed = value._copyFromDartTo_CFixed();
+        res._index = 1;
+      },
+    );
+    return res;
+  }
+}
+
+// MARK: - MapAppearance
+
+extension MapAppearanceEffectiveTheme on MapAppearance {
+  /**
+   Тема карты, которую задаёт этот внешний вид: для BySystem - светлая или
+   тёмная по платформенному тёмному режиму, для Fixed - всегда его тема,
+   независимо от is_platform_dark_mode.
+  */
+  MapTheme effectiveTheme(
+    bool isPlatformDarkMode
+  )  {
+    var _a0 = this._copyFromDartTo_CMapAppearance();
+    _CMapTheme res = _CFunction_G_effectiveTheme_With_CMapAppearance_bool(_a0, isPlatformDarkMode);
+    _a0._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+}
 // MARK: - parseGeoJsonFile
 
 List<GeometryMapObject> parseGeoJsonFile(
@@ -37978,211 +38215,6 @@ Zoom styleZToProjectionZ(
   var _a1 = latitude._copyFromDartTo_CLatitude();
   _CZoom res = _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitude(_a0, _a1);
   return res._toDart();
-}
-
-// MARK: - BySystem
-
-class BySystem {
-  final MapTheme light;
-  final MapTheme dark;
-
-  const BySystem({
-    required this.light,
-    required this.dark
-  });
-
-  BySystem copyWith({
-    MapTheme? light,
-    MapTheme? dark
-  }) {
-    return BySystem(
-      light: light ?? this.light,
-      dark: dark ?? this.dark
-    );
-  }
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is BySystem &&
-    other.runtimeType == runtimeType &&
-    other.light == light &&
-    other.dark == dark;
-
-  @override
-  int get hashCode {
-    return Object.hash(light, dark);
-  }
-
-}
-final class _CBySystem extends ffi.Struct {
-  external _CMapTheme light;
-
-  external _CMapTheme dark;
-
-}
-// MARK: - BySystem <-> _CBySystem
-
-extension _CBySystemToDart on _CBySystem {
-  BySystem _toDart() {
-    return BySystem(
-      light: this.light._toDart(),
-      dark: this.dark._toDart()
-    );
-  }
-}
-
-extension _DartTo_CBySystem on BySystem {
-  _CBySystem _copyFromDartTo_CBySystem() {
-    final res = _CBySystemMakeDefault();
-    res.light = this.light._copyFromDartTo_CMapTheme();
-    res.dark = this.dark._copyFromDartTo_CMapTheme();
-    return res;
-  }
-}
-extension _CBySystemRelease on _CBySystem {
-  void _releaseIntermediate() {
-    light._releaseIntermediate();
-    dark._releaseIntermediate();
-  }
-}
-
-// MARK: - Fixed
-
-class Fixed {
-  final MapTheme theme;
-
-  const Fixed(this.theme);
-
-  Fixed copyWith({
-    MapTheme? theme
-  }) {
-    return Fixed(
-      theme ?? this.theme
-    );
-  }
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is Fixed &&
-    other.runtimeType == runtimeType &&
-    other.theme == theme;
-
-  @override
-  int get hashCode {
-    return theme.hashCode;
-  }
-
-}
-final class _CFixed extends ffi.Struct {
-  external _CMapTheme theme;
-
-}
-// MARK: - Fixed <-> _CFixed
-
-extension _CFixedToDart on _CFixed {
-  Fixed _toDart() {
-    return Fixed(
-      this.theme._toDart()
-    );
-  }
-}
-
-extension _DartTo_CFixed on Fixed {
-  _CFixed _copyFromDartTo_CFixed() {
-    final res = _CFixedMakeDefault();
-    res.theme = this.theme._copyFromDartTo_CMapTheme();
-    return res;
-  }
-}
-extension _CFixedRelease on _CFixed {
-  void _releaseIntermediate() {
-    theme._releaseIntermediate();
-  }
-}
-
-// MARK: - MapAppearance
-
-final class MapAppearance {
-  final Object? _value;
-  final int _index;
-
-  MapAppearance._raw(this._value, this._index);
-
-  MapAppearance.bySystem(BySystem value) : this._raw(value, 0);
-  MapAppearance.fixed(Fixed value) : this._raw(value, 1);
-
-  bool get isBySystem => this._index == 0;
-  BySystem? get asBySystem => this.isBySystem ? this._value as BySystem : null;
-
-  bool get isFixed => this._index == 1;
-  Fixed? get asFixed => this.isFixed ? this._value as Fixed : null;
-
-  T match<T>({
-    required T Function(BySystem value) bySystem,
-    required T Function(Fixed value) fixed,
-  }) {
-    return switch (this._index) {
-      0 => bySystem(this._value as BySystem),
-      1 => fixed(this._value as Fixed),
-      _ => throw NativeException("Unrecognized case index ${this._index}")
-    };
-  }
-
-  @override
-  String toString() => "MapAppearance(${this._value})";
-
-  @override
-  bool operator ==(Object other) =>
-    identical(this, other) || other is MapAppearance &&
-    other.runtimeType == runtimeType &&
-    other._value == this._value && other._index == this._index;
-
-  @override
-  int get hashCode => Object.hash(this._index, this._value);
-}
-
-final class _CMapAppearanceImpl extends ffi.Union {
-  external _CBySystem _bySystem;
-  external _CFixed _fixed;
-}
-
-final class _CMapAppearance extends ffi.Struct {
-  external _CMapAppearanceImpl _impl;
-  @ffi.Uint8()
-  external int _index;
-}
-
-extension _CMapAppearanceBasicFunctions on _CMapAppearance {
-  void _releaseIntermediate() {
-    _CMapAppearance_release(this);
-  }
-}
-	
-// MARK: - MapAppearance <-> CMapAppearance
-
-extension _CMapAppearanceToDart on _CMapAppearance {
-  MapAppearance _toDart() {
-    return switch (this._index) {
-      0 => MapAppearance.bySystem(this._impl._bySystem._toDart()),
-      1 => MapAppearance.fixed(this._impl._fixed._toDart()),
-      _ => throw NativeException("Unrecognized case index ${this._index}")
-    };
-  }
-}
-
-extension _DartTo_CMapAppearance on MapAppearance {
-  _CMapAppearance _copyFromDartTo_CMapAppearance() {
-    var res = _CMapAppearanceMakeDefault();
-    this.match<void>(
-      bySystem: (BySystem value) {
-        res._impl._bySystem = value._copyFromDartTo_CBySystem();
-        res._index = 0;
-      },
-      fixed: (Fixed value) {
-        res._impl._fixed = value._copyFromDartTo_CFixed();
-        res._index = 1;
-      },
-    );
-    return res;
-  }
 }
 
 // MARK: - GeometryMapObjectSourceBuilder
@@ -57109,6 +57141,8 @@ late final _CDgisSource_S_createDgisSource_CContextPtr = _lookup<ffi.NativeFunct
 late final _CDgisSource_S_createDgisSource_CContext = _CDgisSource_S_createDgisSource_CContextPtr.asFunction<_CSource Function(_CContext)>();
 late final _CDgisSource_S_createImmersiveDgisSource_CContextPtr = _lookup<ffi.NativeFunction<_CSource Function(_CContext)>>('CDgisSource_S_createImmersiveDgisSource_CContext');
 late final _CDgisSource_S_createImmersiveDgisSource_CContext = _CDgisSource_S_createImmersiveDgisSource_CContextPtr.asFunction<_CSource Function(_CContext)>();
+late final _CDgisSource_S_createReliefDgisSource_CContextPtr = _lookup<ffi.NativeFunction<_CSource Function(_CContext)>>('CDgisSource_S_createReliefDgisSource_CContext');
+late final _CDgisSource_S_createReliefDgisSource_CContext = _CDgisSource_S_createReliefDgisSource_CContextPtr.asFunction<_CSource Function(_CContext)>();
 late final _CDgisSource_setHighlighted_CArray_CDgisObjectId_boolPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CDgisSource, _CArray_CDgisObjectId, ffi.Bool)>>('CDgisSource_setHighlighted_CArray_CDgisObjectId_bool');
 late final _CDgisSource_setHighlighted_CArray_CDgisObjectId_bool = _CDgisSource_setHighlighted_CArray_CDgisObjectId_boolPtr.asFunction<void Function(_CDgisSource, _CArray_CDgisObjectId, bool)>();
 
@@ -57908,6 +57942,21 @@ late final _CFunction_G_defaultDarkTheme = _CFunction_G_defaultDarkThemePtr.asFu
 late final _CMapThemeMakeDefaultPtr = _lookup<ffi.NativeFunction<_CMapTheme Function()>>('CMapThemeMakeDefault');
 late final _CMapThemeMakeDefault = _CMapThemeMakeDefaultPtr.asFunction<_CMapTheme Function()>();
 
+
+late final _CBySystemMakeDefaultPtr = _lookup<ffi.NativeFunction<_CBySystem Function()>>('CBySystemMakeDefault');
+late final _CBySystemMakeDefault = _CBySystemMakeDefaultPtr.asFunction<_CBySystem Function()>();
+
+
+late final _CFixedMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFixed Function()>>('CFixedMakeDefault');
+late final _CFixedMakeDefault = _CFixedMakeDefaultPtr.asFunction<_CFixed Function()>();
+
+
+late final _CMapAppearance_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMapAppearance)>>('CMapAppearance_release');
+late final _CMapAppearance_release = _CMapAppearance_releasePtr.asFunction<void Function(_CMapAppearance)>();
+late final _CMapAppearanceMakeDefaultPtr = _lookup<ffi.NativeFunction<_CMapAppearance Function()>>('CMapAppearanceMakeDefault');
+late final _CMapAppearanceMakeDefault = _CMapAppearanceMakeDefaultPtr.asFunction<_CMapAppearance Function()>();
+late final _CFunction_G_effectiveTheme_With_CMapAppearance_boolPtr = _lookup<ffi.NativeFunction<_CMapTheme Function(_CMapAppearance, ffi.Bool)>>('CFunction_G_effectiveTheme_With_CMapAppearance_bool');
+late final _CFunction_G_effectiveTheme_With_CMapAppearance_bool = _CFunction_G_effectiveTheme_With_CMapAppearance_boolPtr.asFunction<_CMapTheme Function(_CMapAppearance, bool)>();
 late final _CFunction_G_parseGeoJsonFile_With_CStringPtr = _lookup<ffi.NativeFunction<_CArray_CGeometryMapObject Function(_CString)>>('CFunction_G_parseGeoJsonFile_With_CString');
 late final _CFunction_G_parseGeoJsonFile_With_CString = _CFunction_G_parseGeoJsonFile_With_CStringPtr.asFunction<_CArray_CGeometryMapObject Function(_CString)>();
 late final _CFunction_G_parseGeoJson_With_CStringPtr = _lookup<ffi.NativeFunction<_CArray_CGeometryMapObject Function(_CString)>>('CFunction_G_parseGeoJson_With_CString');
@@ -58119,19 +58168,6 @@ late final _CFunction_G_projectionZToStyleZ_With_CZoom_CLatitudePtr = _lookup<ff
 late final _CFunction_G_projectionZToStyleZ_With_CZoom_CLatitude = _CFunction_G_projectionZToStyleZ_With_CZoom_CLatitudePtr.asFunction<_CStyleZoom Function(_CZoom, _CLatitude)>();
 late final _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitudePtr = _lookup<ffi.NativeFunction<_CZoom Function(_CStyleZoom, _CLatitude)>>('CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitude');
 late final _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitude = _CFunction_G_styleZToProjectionZ_With_CStyleZoom_CLatitudePtr.asFunction<_CZoom Function(_CStyleZoom, _CLatitude)>();
-
-late final _CBySystemMakeDefaultPtr = _lookup<ffi.NativeFunction<_CBySystem Function()>>('CBySystemMakeDefault');
-late final _CBySystemMakeDefault = _CBySystemMakeDefaultPtr.asFunction<_CBySystem Function()>();
-
-
-late final _CFixedMakeDefaultPtr = _lookup<ffi.NativeFunction<_CFixed Function()>>('CFixedMakeDefault');
-late final _CFixedMakeDefault = _CFixedMakeDefaultPtr.asFunction<_CFixed Function()>();
-
-
-late final _CMapAppearance_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMapAppearance)>>('CMapAppearance_release');
-late final _CMapAppearance_release = _CMapAppearance_releasePtr.asFunction<void Function(_CMapAppearance)>();
-late final _CMapAppearanceMakeDefaultPtr = _lookup<ffi.NativeFunction<_CMapAppearance Function()>>('CMapAppearanceMakeDefault');
-late final _CMapAppearanceMakeDefault = _CMapAppearanceMakeDefaultPtr.asFunction<_CMapAppearance Function()>();
 
 late final _CGeometryMapObjectSourceBuilder_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectSourceBuilder_cg_objectIdentifier');
 late final _CGeometryMapObjectSourceBuilder_cg_objectIdentifier = _CGeometryMapObjectSourceBuilder_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
