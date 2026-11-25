@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:isolate';
 import 'package:ffi/ffi.dart' as ffi_package;
 import 'package:async/async.dart';
 import 'package:meta/meta.dart';
@@ -30,7 +31,7 @@ ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) get _lookup
 class BssEventsSourceClearGuard implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CBssEventsSourceClearGuard_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CBssEventsSourceClearGuard_finalizePtr);
 
   BssEventsSourceClearGuard._raw(this._self);
   factory BssEventsSourceClearGuard._create(ffi.Pointer<ffi.Void> self) {
@@ -99,7 +100,7 @@ extension _DartToCBssEventsSourceClearGuard on BssEventsSourceClearGuard {
 class Context implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CContext_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CContext_finalizePtr);
 
   Context._raw(this._self);
   factory Context._create(ffi.Pointer<ffi.Void> self) {
@@ -942,9 +943,9 @@ abstract class LogSink {
 
 class _LogSink {
   final LogSink object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _LogSink(this.object);
+  _LogSink(this.object, this.callbackPort);
 }
 
 final class _CLogSink extends ffi.Struct {
@@ -952,6 +953,8 @@ final class _CLogSink extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLogMessage)>> _write_CLogMessage;
 }
@@ -983,30 +986,6 @@ extension _CLogSinkToDart on _CLogSink {
 }
 
 extension _DartTo_CLogSink on LogSink {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CLogSinkInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CLogSinkInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CLogSinkInstanceMap.remove(platformValue.address);
-  }
-
   _CLogSink _copyFromDartTo_CLogSink() {
     var res = _CLogSinkMakeDefault();
     if (this is _LogSinkCpp) {
@@ -1016,14 +995,14 @@ extension _DartTo_CLogSink on LogSink {
     }
     final instanceId = _CLogSinkInstanceCounter;
     _CLogSinkInstanceCounter += 1;
-    _CLogSinkInstanceMap[instanceId] = _LogSink(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CLogSinkInstanceMap[instanceId] = _LogSink(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final write_CLogMessageFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLogMessage)>.listener(write_CLogMessageFunction);
+    final write_CLogMessageFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLogMessage)>.isolateLocal(write_CLogMessageFunction);
     res._write_CLogMessage = write_CLogMessageFunctionCallable.nativeFunction;
     return res;
   }
@@ -1167,7 +1146,7 @@ extension _CLogOptionsRelease on _CLogOptions {
 class _LogSinkCpp extends LogSink implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CLogSinkCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CLogSinkCpp_finalizePtr);
 
   _LogSinkCpp._raw(this._self);
   factory _LogSinkCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -1334,6 +1313,73 @@ extension _CLogMessageRelease on _CLogMessage {
   }
 }
 
+// MARK: - CCancellable <-> _CCancellable
+
+final class _CCancellable extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> _impl;
+}
+
+// The finalizer owns the native subscription even when Dart onCancel cannot run.
+class _NativeCallbackPort implements ffi.Finalizable {
+  static final _finalizer = ffi.NativeFinalizer(_CCancellableFinalizePtr);
+  late final RawReceivePort _port;
+  _CCancellable? _cancellable;
+
+  _NativeCallbackPort() {
+    if (!_CCancellableInitializeDartApi(ffi.NativeApi.initializeApiDLData)) {
+      throw UnsupportedError('Incompatible Dart native API');
+    }
+    _port = RawReceivePort(Zone.current.bindUnaryCallbackGuarded((dynamic message) {
+      final cancellable = _cancellable;
+      if (cancellable != null) {
+        _CCancellableDispatch(cancellable, message as int);
+      }
+    }));
+  }
+
+  factory _NativeCallbackPort.protocol() {
+    final port = _NativeCallbackPort();
+    final cancellable = _CCancellableCreateDartProtocolQueue(
+        port.portId, ffi.NativeApi.initializeApiDLData);
+    port.attach(cancellable._retain());
+    cancellable._releaseIntermediate();
+    return port;
+  }
+
+  int get portId => _port.sendPort.nativePort;
+
+  void attach(_CCancellable cancellable) {
+    _cancellable = cancellable;
+    _finalizer.attach(this, cancellable._impl, detach: this);
+  }
+
+  void cancel() {
+    final cancellable = _cancellable;
+    if (cancellable == null) {
+      return;
+    }
+    _cancellable = null;
+    _port.close();
+    _finalizer.detach(this);
+    cancellable._cancel();
+  }
+}
+
+extension _CCancellableBasicFunctions on _CCancellable {
+  void _releaseIntermediate() {
+    _CCancellable_release(this);
+  }
+
+  _CCancellable _retain() {
+    return _CCancellable_retain(this);
+  }
+
+  void _cancel() {
+    _CCancellableCancel(this);
+    this._releaseIntermediate();
+  }
+}
+	
 // MARK: - VendorConfigFromAsset
 
 /**
@@ -1697,9 +1743,9 @@ abstract class LocationProvider {
 
 class _LocationProvider {
   final LocationProvider object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _LocationProvider(this.object);
+  _LocationProvider(this.object, this.callbackPort);
 }
 
 final class _CLocationProvider extends ffi.Struct {
@@ -1707,6 +1753,8 @@ final class _CLocationProvider extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CLocation)>>)>> _lastLocation;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CLocationNotifier, _COptional_CLocationAvailableNotifier)>> _setNotifiers_COptional_CLocationNotifier_COptional_CLocationAvailableNotifier;
@@ -1740,30 +1788,6 @@ extension _CLocationProviderToDart on _CLocationProvider {
 }
 
 extension _DartTo_CLocationProvider on LocationProvider {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CLocationProviderInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CLocationProviderInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CLocationProviderInstanceMap.remove(platformValue.address);
-  }
-
   _CLocationProvider _copyFromDartTo_CLocationProvider() {
     var res = _CLocationProviderMakeDefault();
     if (this is _LocationProviderCpp) {
@@ -1773,18 +1797,18 @@ extension _DartTo_CLocationProvider on LocationProvider {
     }
     final instanceId = _CLocationProviderInstanceCounter;
     _CLocationProviderInstanceCounter += 1;
-    _CLocationProviderInstanceMap[instanceId] = _LocationProvider(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CLocationProviderInstanceMap[instanceId] = _LocationProvider(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final lastLocationFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CLocation)>>)>.listener(lastLocationFunction);
+    final lastLocationFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CLocation)>>)>.isolateLocal(lastLocationFunction);
     res._lastLocation = lastLocationFunctionCallable.nativeFunction;
-    final setNotifiers_COptional_CLocationNotifier_COptional_CLocationAvailableNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CLocationNotifier, _COptional_CLocationAvailableNotifier)>.listener(setNotifiers_COptional_CLocationNotifier_COptional_CLocationAvailableNotifierFunction);
+    final setNotifiers_COptional_CLocationNotifier_COptional_CLocationAvailableNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CLocationNotifier, _COptional_CLocationAvailableNotifier)>.isolateLocal(setNotifiers_COptional_CLocationNotifier_COptional_CLocationAvailableNotifierFunction);
     res._setNotifiers_COptional_CLocationNotifier_COptional_CLocationAvailableNotifier = setNotifiers_COptional_CLocationNotifier_COptional_CLocationAvailableNotifierFunctionCallable.nativeFunction;
-    final setDesiredAccuracy_CDesiredAccuracyFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CDesiredAccuracy)>.listener(setDesiredAccuracy_CDesiredAccuracyFunction);
+    final setDesiredAccuracy_CDesiredAccuracyFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CDesiredAccuracy)>.isolateLocal(setDesiredAccuracy_CDesiredAccuracyFunction);
     res._setDesiredAccuracy_CDesiredAccuracy = setDesiredAccuracy_CDesiredAccuracyFunctionCallable.nativeFunction;
     return res;
   }
@@ -1889,7 +1913,7 @@ extension _DartTo_COptional_CLocationProvider on LocationProvider? {
 class _LocationProviderCpp extends LocationProvider implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CLocationProviderCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CLocationProviderCpp_finalizePtr);
 
   _LocationProviderCpp._raw(this._self);
   factory _LocationProviderCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -2754,7 +2778,7 @@ extension _DartTo_COptional_CLocation on Location? {
 class LocationNotifier implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CLocationNotifier_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CLocationNotifier_finalizePtr);
 
   LocationNotifier._raw(this._self);
   factory LocationNotifier._create(ffi.Pointer<ffi.Void> self) {
@@ -2917,7 +2941,7 @@ extension _CArray_CLocationBasicFunctions on _CArray_CLocation {
 class LocationAvailableNotifier implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CLocationAvailableNotifier_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CLocationAvailableNotifier_finalizePtr);
 
   LocationAvailableNotifier._raw(this._self);
   factory LocationAvailableNotifier._create(ffi.Pointer<ffi.Void> self) {
@@ -3042,9 +3066,9 @@ abstract class HeadingProvider {
 
 class _HeadingProvider {
   final HeadingProvider object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _HeadingProvider(this.object);
+  _HeadingProvider(this.object, this.callbackPort);
 }
 
 final class _CHeadingProvider extends ffi.Struct {
@@ -3052,6 +3076,8 @@ final class _CHeadingProvider extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CHeadingNotifier, _COptional_CHeadingAvailableNotifier)>> _setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifier;
 }
@@ -3083,30 +3109,6 @@ extension _CHeadingProviderToDart on _CHeadingProvider {
 }
 
 extension _DartTo_CHeadingProvider on HeadingProvider {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CHeadingProviderInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CHeadingProviderInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CHeadingProviderInstanceMap.remove(platformValue.address);
-  }
-
   _CHeadingProvider _copyFromDartTo_CHeadingProvider() {
     var res = _CHeadingProviderMakeDefault();
     if (this is _HeadingProviderCpp) {
@@ -3116,14 +3118,14 @@ extension _DartTo_CHeadingProvider on HeadingProvider {
     }
     final instanceId = _CHeadingProviderInstanceCounter;
     _CHeadingProviderInstanceCounter += 1;
-    _CHeadingProviderInstanceMap[instanceId] = _HeadingProvider(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CHeadingProviderInstanceMap[instanceId] = _HeadingProvider(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CHeadingNotifier, _COptional_CHeadingAvailableNotifier)>.listener(setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierFunction);
+    final setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CHeadingNotifier, _COptional_CHeadingAvailableNotifier)>.isolateLocal(setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierFunction);
     res._setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifier = setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierFunctionCallable.nativeFunction;
     return res;
   }
@@ -3197,7 +3199,7 @@ extension _DartTo_COptional_CHeadingProvider on HeadingProvider? {
 class _HeadingProviderCpp extends HeadingProvider implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CHeadingProviderCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CHeadingProviderCpp_finalizePtr);
 
   _HeadingProviderCpp._raw(this._self);
   factory _HeadingProviderCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -3296,7 +3298,7 @@ extension _DartToCHeadingProviderCpp on _HeadingProviderCpp {
 class HeadingNotifier implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CHeadingNotifier_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CHeadingNotifier_finalizePtr);
 
   HeadingNotifier._raw(this._self);
   factory HeadingNotifier._create(ffi.Pointer<ffi.Void> self) {
@@ -3488,7 +3490,7 @@ extension _CPlatformHeadingRelease on _CPlatformHeading {
 class HeadingAvailableNotifier implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CHeadingAvailableNotifier_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CHeadingAvailableNotifier_finalizePtr);
 
   HeadingAvailableNotifier._raw(this._self);
   factory HeadingAvailableNotifier._create(ffi.Pointer<ffi.Void> self) {
@@ -3853,7 +3855,7 @@ extension _CDgisObjectIdRelease on _CDgisObjectId {
 class SystemMemoryManager implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSystemMemoryManager_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSystemMemoryManager_finalizePtr);
 
   SystemMemoryManager._raw(this._self);
   factory SystemMemoryManager._create(ffi.Pointer<ffi.Void> self) {
@@ -4778,7 +4780,7 @@ extension _CContextTaggedPointerSnapshotRelease on _CContextTaggedPointerSnapsho
 class ContextTaggedPointersProvider implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CContextTaggedPointersProvider_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CContextTaggedPointersProvider_finalizePtr);
 
   ContextTaggedPointersProvider._raw(this._self);
   factory ContextTaggedPointersProvider._create(ffi.Pointer<ffi.Void> self) {
@@ -4912,7 +4914,7 @@ extension _CArray_CContextTaggedPointerSnapshotBasicFunctions on _CArray_CContex
 class _ContextObserverCpp extends ContextObserver implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CContextObserverCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CContextObserverCpp_finalizePtr);
 
   _ContextObserverCpp._raw(this._self);
   factory _ContextObserverCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -5013,9 +5015,9 @@ abstract class ContextObserver {
 
 class _ContextObserver {
   final ContextObserver object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _ContextObserver(this.object);
+  _ContextObserver(this.object, this.callbackPort);
 }
 
 final class _CContextObserver extends ffi.Struct {
@@ -5023,6 +5025,8 @@ final class _CContextObserver extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>)>> _onContextCreated;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CContextTaggedPointersProvider)>> _onContextDestroyed_CContextTaggedPointersProvider;
@@ -5055,30 +5059,6 @@ extension _CContextObserverToDart on _CContextObserver {
 }
 
 extension _DartTo_CContextObserver on ContextObserver {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CContextObserverInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CContextObserverInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CContextObserverInstanceMap.remove(platformValue.address);
-  }
-
   _CContextObserver _copyFromDartTo_CContextObserver() {
     var res = _CContextObserverMakeDefault();
     if (this is _ContextObserverCpp) {
@@ -5088,16 +5068,16 @@ extension _DartTo_CContextObserver on ContextObserver {
     }
     final instanceId = _CContextObserverInstanceCounter;
     _CContextObserverInstanceCounter += 1;
-    _CContextObserverInstanceMap[instanceId] = _ContextObserver(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CContextObserverInstanceMap[instanceId] = _ContextObserver(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final onContextCreatedFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>)>.listener(onContextCreatedFunction);
+    final onContextCreatedFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>)>.isolateLocal(onContextCreatedFunction);
     res._onContextCreated = onContextCreatedFunctionCallable.nativeFunction;
-    final onContextDestroyed_CContextTaggedPointersProviderFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CContextTaggedPointersProvider)>.listener(onContextDestroyed_CContextTaggedPointersProviderFunction);
+    final onContextDestroyed_CContextTaggedPointersProviderFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CContextTaggedPointersProvider)>.isolateLocal(onContextDestroyed_CContextTaggedPointersProviderFunction);
     res._onContextDestroyed_CContextTaggedPointersProvider = onContextDestroyed_CContextTaggedPointersProviderFunctionCallable.nativeFunction;
     return res;
   }
@@ -5147,7 +5127,7 @@ extension _DartTo_CContextObserver on ContextObserver {
 class File implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CFile_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CFile_finalizePtr);
 
   File._raw(this._self);
   factory File._create(ffi.Pointer<ffi.Void> self) {
@@ -8680,7 +8660,7 @@ class ItemMarkerInfo implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CItemMarkerInfo_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CItemMarkerInfo_finalizePtr);
 
   ItemMarkerInfo._raw(this._self);
   factory ItemMarkerInfo._create(ffi.Pointer<ffi.Void> self) {
@@ -11292,7 +11272,7 @@ class PolylineGeometry extends Geometry implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPolylineGeometry_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPolylineGeometry_finalizePtr);
 
   PolylineGeometry._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory PolylineGeometry._create(ffi.Pointer<ffi.Void> self) {
@@ -14310,7 +14290,7 @@ class DirectoryObject implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CDirectoryObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDirectoryObject_finalizePtr);
 
   DirectoryObject._raw(this._self);
   factory DirectoryObject._create(ffi.Pointer<ffi.Void> self) {
@@ -15191,16 +15171,14 @@ final class _CFuture_COptional_CPublicTransportDirectoryScheduleInfo extends ffi
 
 class _CFuture_COptional_CPublicTransportDirectoryScheduleInfo_Cancellable {
   final Completer<PublicTransportDirectoryScheduleInfo?> completer;
-  final _CFuture_COptional_CPublicTransportDirectoryScheduleInfo _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_COptional_CPublicTransportDirectoryScheduleInfo, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_COptional_CPublicTransportDirectoryScheduleInfo_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -15210,8 +15188,7 @@ class _CFuture_COptional_CPublicTransportDirectoryScheduleInfo_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -15256,23 +15233,26 @@ extension _CFuture_COptional_CPublicTransportDirectoryScheduleInfoToDart on _CFu
   }
 
   CancelableOperation<PublicTransportDirectoryScheduleInfo?> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<PublicTransportDirectoryScheduleInfo?>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CPublicTransportDirectoryScheduleInfo, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CPublicTransportDirectoryScheduleInfo, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_COptional_CPublicTransportDirectoryScheduleInfoReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_COptional_CPublicTransportDirectoryScheduleInfo_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -15329,27 +15309,6 @@ extension _DartTo_COptional_CPublicTransportDirectoryScheduleInfo on PublicTrans
     return cOptional;
   }
 }
-// MARK: - CCancellable <-> _CCancellable
-
-final class _CCancellable extends ffi.Struct {
-  external ffi.Pointer<ffi.Void> _impl;
-}
-
-extension _CCancellableBasicFunctions on _CCancellable {
-  void _releaseIntermediate() {
-    _CCancellable_release(this);
-  }
-
-  _CCancellable _retain() {
-    return _CCancellable_retain(this);
-  }
-
-  void _cancel() {
-    _CCancellableCancel(this);
-    this._releaseIntermediate();
-  }
-}
-	
 // MARK: - Page
 
 /** Страница результатов поиска. */
@@ -15364,7 +15323,7 @@ class Page implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPage_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPage_finalizePtr);
 
   Page._raw(this._self);
   factory Page._create(ffi.Pointer<ffi.Void> self) {
@@ -15508,16 +15467,14 @@ final class _CFuture_COptional_CPage extends ffi.Struct {
 
 class _CFuture_COptional_CPage_Cancellable {
   final Completer<Page?> completer;
-  final _CFuture_COptional_CPage _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_COptional_CPage, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_COptional_CPage_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -15527,8 +15484,7 @@ class _CFuture_COptional_CPage_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -15573,23 +15529,26 @@ extension _CFuture_COptional_CPageToDart on _CFuture_COptional_CPage {
   }
 
   CancelableOperation<Page?> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<Page?>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CPage, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CPage, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_COptional_CPageReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_COptional_CPage_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -15794,7 +15753,7 @@ class Category implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCategory_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCategory_finalizePtr);
 
   Category._raw(this._self);
   factory Category._create(ffi.Pointer<ffi.Void> self) {
@@ -15950,7 +15909,7 @@ class CategoriesPage implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCategoriesPage_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCategoriesPage_finalizePtr);
 
   CategoriesPage._raw(this._self);
   factory CategoriesPage._create(ffi.Pointer<ffi.Void> self) {
@@ -16051,16 +16010,14 @@ final class _CFuture_COptional_CCategoriesPage extends ffi.Struct {
 
 class _CFuture_COptional_CCategoriesPage_Cancellable {
   final Completer<CategoriesPage?> completer;
-  final _CFuture_COptional_CCategoriesPage _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_COptional_CCategoriesPage_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -16070,8 +16027,7 @@ class _CFuture_COptional_CCategoriesPage_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -16116,23 +16072,26 @@ extension _CFuture_COptional_CCategoriesPageToDart on _CFuture_COptional_CCatego
   }
 
   CancelableOperation<CategoriesPage?> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<CategoriesPage?>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_COptional_CCategoriesPageReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_COptional_CCategoriesPage_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -16213,7 +16172,7 @@ class SearchCategoriesResult implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchCategoriesResult_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchCategoriesResult_finalizePtr);
 
   SearchCategoriesResult._raw(this._self);
   factory SearchCategoriesResult._create(ffi.Pointer<ffi.Void> self) {
@@ -16522,7 +16481,7 @@ class Widget implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CWidget_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CWidget_finalizePtr);
 
   Widget._raw(this._self);
   factory Widget._create(ffi.Pointer<ffi.Void> self) {
@@ -16660,7 +16619,7 @@ class Checkbox extends Widget implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCheckbox_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCheckbox_finalizePtr);
 
   Checkbox._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory Checkbox._create(ffi.Pointer<ffi.Void> self) {
@@ -16790,7 +16749,7 @@ class CheckableItem implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCheckableItem_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCheckableItem_finalizePtr);
 
   CheckableItem._raw(this._self);
   factory CheckableItem._create(ffi.Pointer<ffi.Void> self) {
@@ -16907,7 +16866,7 @@ class CheckableGroupedItem implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCheckableGroupedItem_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCheckableGroupedItem_finalizePtr);
 
   CheckableGroupedItem._raw(this._self);
   factory CheckableGroupedItem._create(ffi.Pointer<ffi.Void> self) {
@@ -16986,7 +16945,7 @@ class CheckableItemsGroup extends Widget implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCheckableItemsGroup_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCheckableItemsGroup_finalizePtr);
 
   CheckableItemsGroup._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory CheckableItemsGroup._create(ffi.Pointer<ffi.Void> self) {
@@ -17133,7 +17092,7 @@ class SimpleCheckableItem extends CheckableItem implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSimpleCheckableItem_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSimpleCheckableItem_finalizePtr);
 
   SimpleCheckableItem._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory SimpleCheckableItem._create(ffi.Pointer<ffi.Void> self) {
@@ -17212,7 +17171,7 @@ class GroupCheckableItem extends CheckableItem implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CGroupCheckableItem_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CGroupCheckableItem_finalizePtr);
 
   GroupCheckableItem._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory GroupCheckableItem._create(ffi.Pointer<ffi.Void> self) {
@@ -17730,7 +17689,7 @@ class RangeWidget extends Widget implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CRangeWidget_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRangeWidget_finalizePtr);
 
   RangeWidget._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory RangeWidget._create(ffi.Pointer<ffi.Void> self) {
@@ -17882,7 +17841,7 @@ class SearchResult implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchResult_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchResult_finalizePtr);
 
   SearchResult._raw(this._self);
   factory SearchResult._create(ffi.Pointer<ffi.Void> self) {
@@ -18033,7 +17992,7 @@ class Geometry implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CGeometry_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CGeometry_finalizePtr);
 
   Geometry._raw(this._self);
   factory Geometry._create(ffi.Pointer<ffi.Void> self) {
@@ -18175,16 +18134,14 @@ final class _CFuture_COptional_CArray_CItemMarkerInfo extends ffi.Struct {
 
 class _CFuture_COptional_CArray_CItemMarkerInfo_Cancellable {
   final Completer<List<ItemMarkerInfo>?> completer;
-  final _CFuture_COptional_CArray_CItemMarkerInfo _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_COptional_CArray_CItemMarkerInfo, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_COptional_CArray_CItemMarkerInfo_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -18194,8 +18151,7 @@ class _CFuture_COptional_CArray_CItemMarkerInfo_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -18240,23 +18196,26 @@ extension _CFuture_COptional_CArray_CItemMarkerInfoToDart on _CFuture_COptional_
   }
 
   CancelableOperation<List<ItemMarkerInfo>?> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<List<ItemMarkerInfo>?>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CArray_CItemMarkerInfo, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CArray_CItemMarkerInfo, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_COptional_CArray_CItemMarkerInfoReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_COptional_CArray_CItemMarkerInfo_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -18407,16 +18366,14 @@ final class _CFuture_CArray_CUIMarkerInfo extends ffi.Struct {
 
 class _CFuture_CArray_CUIMarkerInfo_Cancellable {
   final Completer<List<UIMarkerInfo>> completer;
-  final _CFuture_CArray_CUIMarkerInfo _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CArray_CUIMarkerInfo, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CArray_CUIMarkerInfo_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -18426,8 +18383,7 @@ class _CFuture_CArray_CUIMarkerInfo_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -18472,23 +18428,26 @@ extension _CFuture_CArray_CUIMarkerInfoToDart on _CFuture_CArray_CUIMarkerInfo {
   }
 
   CancelableOperation<List<UIMarkerInfo>> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<List<UIMarkerInfo>>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CUIMarkerInfo, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CUIMarkerInfo, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CArray_CUIMarkerInfoReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CArray_CUIMarkerInfo_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -18601,7 +18560,7 @@ extension _CArray_CWidgetBasicFunctions on _CArray_CWidget {
 class SearchQuery implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchQuery_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchQuery_finalizePtr);
 
   SearchQuery._raw(this._self);
   factory SearchQuery._create(ffi.Pointer<ffi.Void> self) {
@@ -18670,7 +18629,7 @@ extension _DartToCSearchQuery on SearchQuery {
 class CategoryQuery implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CCategoryQuery_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCategoryQuery_finalizePtr);
 
   CategoryQuery._raw(this._self);
   factory CategoryQuery._create(ffi.Pointer<ffi.Void> self) {
@@ -18747,7 +18706,7 @@ class SuggestObjectHandler implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSuggestObjectHandler_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSuggestObjectHandler_finalizePtr);
 
   SuggestObjectHandler._raw(this._self);
   factory SuggestObjectHandler._create(ffi.Pointer<ffi.Void> self) {
@@ -18824,7 +18783,7 @@ class PerformSearchHandler implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPerformSearchHandler_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPerformSearchHandler_finalizePtr);
 
   PerformSearchHandler._raw(this._self);
   factory PerformSearchHandler._create(ffi.Pointer<ffi.Void> self) {
@@ -18908,7 +18867,7 @@ class IncompleteTextHandler implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CIncompleteTextHandler_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CIncompleteTextHandler_finalizePtr);
 
   IncompleteTextHandler._raw(this._self);
   factory IncompleteTextHandler._create(ffi.Pointer<ffi.Void> self) {
@@ -19436,7 +19395,7 @@ class Suggest implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSuggest_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSuggest_finalizePtr);
 
   Suggest._raw(this._self);
   factory Suggest._create(ffi.Pointer<ffi.Void> self) {
@@ -19517,7 +19476,7 @@ class SuggestResult implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSuggestResult_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSuggestResult_finalizePtr);
 
   SuggestResult._raw(this._self);
   factory SuggestResult._create(ffi.Pointer<ffi.Void> self) {
@@ -19629,7 +19588,7 @@ extension _CArray_CSuggestBasicFunctions on _CArray_CSuggest {
 class SuggestQuery implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSuggestQuery_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSuggestQuery_finalizePtr);
 
   SuggestQuery._raw(this._self);
   factory SuggestQuery._create(ffi.Pointer<ffi.Void> self) {
@@ -19701,7 +19660,7 @@ extension _DartToCSuggestQuery on SuggestQuery {
 class SearchManager implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchManager_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchManager_finalizePtr);
 
   SearchManager._raw(this._self);
   factory SearchManager._create(ffi.Pointer<ffi.Void> self) {
@@ -19900,16 +19859,14 @@ final class _CFuture_CSuggestResult extends ffi.Struct {
 
 class _CFuture_CSuggestResult_Cancellable {
   final Completer<SuggestResult> completer;
-  final _CFuture_CSuggestResult _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CSuggestResult, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CSuggestResult_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -19919,8 +19876,7 @@ class _CFuture_CSuggestResult_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -19965,23 +19921,26 @@ extension _CFuture_CSuggestResultToDart on _CFuture_CSuggestResult {
   }
 
   CancelableOperation<SuggestResult> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<SuggestResult>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSuggestResult, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSuggestResult, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CSuggestResultReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CSuggestResult_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -20010,16 +19969,14 @@ final class _CFuture_CSearchResult extends ffi.Struct {
 
 class _CFuture_CSearchResult_Cancellable {
   final Completer<SearchResult> completer;
-  final _CFuture_CSearchResult _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CSearchResult, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CSearchResult_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -20029,8 +19986,7 @@ class _CFuture_CSearchResult_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -20075,23 +20031,26 @@ extension _CFuture_CSearchResultToDart on _CFuture_CSearchResult {
   }
 
   CancelableOperation<SearchResult> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<SearchResult>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSearchResult, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSearchResult, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CSearchResultReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CSearchResult_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -20120,16 +20079,14 @@ final class _CFuture_CSearchCategoriesResult extends ffi.Struct {
 
 class _CFuture_CSearchCategoriesResult_Cancellable {
   final Completer<SearchCategoriesResult> completer;
-  final _CFuture_CSearchCategoriesResult _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CSearchCategoriesResult_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -20139,8 +20096,7 @@ class _CFuture_CSearchCategoriesResult_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -20185,23 +20141,26 @@ extension _CFuture_CSearchCategoriesResultToDart on _CFuture_CSearchCategoriesRe
   }
 
   CancelableOperation<SearchCategoriesResult> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<SearchCategoriesResult>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CSearchCategoriesResultReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CSearchCategoriesResult_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -20230,16 +20189,14 @@ final class _CFuture_CArray_CDirectoryObject extends ffi.Struct {
 
 class _CFuture_CArray_CDirectoryObject_Cancellable {
   final Completer<List<DirectoryObject>> completer;
-  final _CFuture_CArray_CDirectoryObject _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CArray_CDirectoryObject_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -20249,8 +20206,7 @@ class _CFuture_CArray_CDirectoryObject_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -20295,23 +20251,26 @@ extension _CFuture_CArray_CDirectoryObjectToDart on _CFuture_CArray_CDirectoryOb
   }
 
   CancelableOperation<List<DirectoryObject>> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<List<DirectoryObject>>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CArray_CDirectoryObjectReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CArray_CDirectoryObject_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -20506,7 +20465,7 @@ extension _CResult_CSearchManagerToDart on _CResult_CSearchManager {
 class SearchQueryBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchQueryBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchQueryBuilder_finalizePtr);
 
   SearchQueryBuilder._raw(this._self);
   factory SearchQueryBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -20921,7 +20880,7 @@ extension _DartTo_COptional_CMeter on Meter? {
 class SuggestQueryBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSuggestQueryBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSuggestQueryBuilder_finalizePtr);
 
   SuggestQueryBuilder._raw(this._self);
   factory SuggestQueryBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -21194,7 +21153,7 @@ extension _CArray_CSuggestedTypeBasicFunctions on _CArray_CSuggestedType {
 class CategorySearchQueryBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CCategorySearchQueryBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCategorySearchQueryBuilder_finalizePtr);
 
   CategorySearchQueryBuilder._raw(this._self);
   factory CategorySearchQueryBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -21355,7 +21314,7 @@ extension _DartTo_COptional_CCategoryGeoContext on CategoryGeoContext? {
 class CategoryListQueryBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CCategoryListQueryBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCategoryListQueryBuilder_finalizePtr);
 
   CategoryListQueryBuilder._raw(this._self);
   factory CategoryListQueryBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -21498,7 +21457,7 @@ extension _DartToCCategoryListQueryBuilder on CategoryListQueryBuilder {
 class CategoryGetByIdsQueryBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CCategoryGetByIdsQueryBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCategoryGetByIdsQueryBuilder_finalizePtr);
 
   CategoryGetByIdsQueryBuilder._raw(this._self);
   factory CategoryGetByIdsQueryBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -21687,7 +21646,7 @@ class SearchQueryWithInfo implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchQueryWithInfo_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchQueryWithInfo_finalizePtr);
 
   SearchQueryWithInfo._raw(this._self);
   factory SearchQueryWithInfo._create(ffi.Pointer<ffi.Void> self) {
@@ -21862,7 +21821,7 @@ extension _DartTo_CSearchHistoryItem on SearchHistoryItem {
 class _SearchHistoryKeyStrategyCpp extends SearchHistoryKeyStrategy implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchHistoryKeyStrategyCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchHistoryKeyStrategyCpp_finalizePtr);
 
   _SearchHistoryKeyStrategyCpp._raw(this._self);
   factory _SearchHistoryKeyStrategyCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -21953,9 +21912,9 @@ abstract class SearchHistoryKeyStrategy {
 
 class _SearchHistoryKeyStrategy {
   final SearchHistoryKeyStrategy object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _SearchHistoryKeyStrategy(this.object);
+  _SearchHistoryKeyStrategy(this.object, this.callbackPort);
 }
 
 final class _CSearchHistoryKeyStrategy extends ffi.Struct {
@@ -21963,6 +21922,8 @@ final class _CSearchHistoryKeyStrategy extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CString)>>, _CSearchHistoryItem)>> _create_CSearchHistoryItem;
 }
@@ -21994,30 +21955,6 @@ extension _CSearchHistoryKeyStrategyToDart on _CSearchHistoryKeyStrategy {
 }
 
 extension _DartTo_CSearchHistoryKeyStrategy on SearchHistoryKeyStrategy {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CSearchHistoryKeyStrategyInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CSearchHistoryKeyStrategyInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CSearchHistoryKeyStrategyInstanceMap.remove(platformValue.address);
-  }
-
   _CSearchHistoryKeyStrategy _copyFromDartTo_CSearchHistoryKeyStrategy() {
     var res = _CSearchHistoryKeyStrategyMakeDefault();
     if (this is _SearchHistoryKeyStrategyCpp) {
@@ -22027,14 +21964,14 @@ extension _DartTo_CSearchHistoryKeyStrategy on SearchHistoryKeyStrategy {
     }
     final instanceId = _CSearchHistoryKeyStrategyInstanceCounter;
     _CSearchHistoryKeyStrategyInstanceCounter += 1;
-    _CSearchHistoryKeyStrategyInstanceMap[instanceId] = _SearchHistoryKeyStrategy(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CSearchHistoryKeyStrategyInstanceMap[instanceId] = _SearchHistoryKeyStrategy(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final create_CSearchHistoryItemFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CString)>>, _CSearchHistoryItem)>.listener(create_CSearchHistoryItemFunction);
+    final create_CSearchHistoryItemFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CString)>>, _CSearchHistoryItem)>.isolateLocal(create_CSearchHistoryItemFunction);
     res._create_CSearchHistoryItem = create_CSearchHistoryItemFunctionCallable.nativeFunction;
     return res;
   }
@@ -22073,7 +22010,7 @@ class SearchHistoryResult implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchHistoryResult_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchHistoryResult_finalizePtr);
 
   SearchHistoryResult._raw(this._self);
   factory SearchHistoryResult._create(ffi.Pointer<ffi.Void> self) {
@@ -22494,7 +22431,7 @@ class SearchHistory implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSearchHistory_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSearchHistory_finalizePtr);
 
   SearchHistory._raw(this._self);
   factory SearchHistory._create(ffi.Pointer<ffi.Void> self) {
@@ -22661,16 +22598,14 @@ final class _CFuture_CSearchHistoryResult extends ffi.Struct {
 
 class _CFuture_CSearchHistoryResult_Cancellable {
   final Completer<SearchHistoryResult> completer;
-  final _CFuture_CSearchHistoryResult _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CSearchHistoryResult, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CSearchHistoryResult_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -22680,8 +22615,7 @@ class _CFuture_CSearchHistoryResult_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -22726,23 +22660,26 @@ extension _CFuture_CSearchHistoryResultToDart on _CFuture_CSearchHistoryResult {
   }
 
   CancelableOperation<SearchHistoryResult> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<SearchHistoryResult>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSearchHistoryResult, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CSearchHistoryResult, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CSearchHistoryResultReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CSearchHistoryResult_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -22822,13 +22759,14 @@ class _CChannel_CChangeTypeImpl extends Channel<ChangeType> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CChangeType, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CChangeType, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<ChangeType>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -22838,8 +22776,8 @@ class _CChannel_CChangeTypeImpl extends Channel<ChangeType> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -22864,8 +22802,10 @@ extension _CChannel_CChangeTypeBasicFunctions on _CChannel_CChangeType {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CChangeType, ffi.Int64)> callback) {
-    return _CChannel_CChangeTypeConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CChangeType, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CChannel_CChangeTypeConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -22990,7 +22930,7 @@ class PackedSearchQuery implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPackedSearchQuery_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPackedSearchQuery_finalizePtr);
 
   PackedSearchQuery._raw(this._self);
   factory PackedSearchQuery._create(ffi.Pointer<ffi.Void> self) {
@@ -23317,7 +23257,7 @@ class PointGeometry extends Geometry implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPointGeometry_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPointGeometry_finalizePtr);
 
   PointGeometry._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory PointGeometry._create(ffi.Pointer<ffi.Void> self) {
@@ -23411,7 +23351,7 @@ class PolygonGeometry extends Geometry implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPolygonGeometry_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPolygonGeometry_finalizePtr);
 
   PolygonGeometry._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory PolygonGeometry._create(ffi.Pointer<ffi.Void> self) {
@@ -23498,7 +23438,7 @@ class ComplexGeometry extends Geometry implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CComplexGeometry_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CComplexGeometry_finalizePtr);
 
   ComplexGeometry._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory ComplexGeometry._create(ffi.Pointer<ffi.Void> self) {
@@ -23730,16 +23670,14 @@ final class _CFuture_CData extends ffi.Struct {
 
 class _CFuture_CData_Cancellable {
   final Completer<ByteData> completer;
-  final _CFuture_CData _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CData, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CData_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -23749,8 +23687,7 @@ class _CFuture_CData_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -23795,23 +23732,26 @@ extension _CFuture_CDataToDart on _CFuture_CData {
   }
 
   CancelableOperation<ByteData> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<ByteData>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CData, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CData, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CDataReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CData_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -25195,7 +25135,7 @@ extension _CZIndexRelease on _CZIndex {
 class CameraTransactionGuard implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CCameraTransactionGuard_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCameraTransactionGuard_finalizePtr);
 
   CameraTransactionGuard._raw(this._self);
   factory CameraTransactionGuard._create(ffi.Pointer<ffi.Void> self) {
@@ -25486,7 +25426,7 @@ extension _CCameraPositionRelease on _CCameraPosition {
 class _CameraMoveControllerCpp extends CameraMoveController implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CCameraMoveControllerCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCameraMoveControllerCpp_finalizePtr);
 
   _CameraMoveControllerCpp._raw(this._self);
   factory _CameraMoveControllerCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -25593,9 +25533,9 @@ abstract class CameraMoveController {
 
 class _CameraMoveController {
   final CameraMoveController object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _CameraMoveController(this.object);
+  _CameraMoveController(this.object, this.callbackPort);
 }
 
 final class _CCameraMoveController extends ffi.Struct {
@@ -25603,6 +25543,8 @@ final class _CCameraMoveController extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CCameraPosition)>>, _CTimeInterval)>> _position_CTimeInterval;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CTimeInterval)>>)>> _animationTime;
@@ -25635,30 +25577,6 @@ extension _CCameraMoveControllerToDart on _CCameraMoveController {
 }
 
 extension _DartTo_CCameraMoveController on CameraMoveController {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CCameraMoveControllerInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CCameraMoveControllerInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CCameraMoveControllerInstanceMap.remove(platformValue.address);
-  }
-
   _CCameraMoveController _copyFromDartTo_CCameraMoveController() {
     var res = _CCameraMoveControllerMakeDefault();
     if (this is _CameraMoveControllerCpp) {
@@ -25668,16 +25586,16 @@ extension _DartTo_CCameraMoveController on CameraMoveController {
     }
     final instanceId = _CCameraMoveControllerInstanceCounter;
     _CCameraMoveControllerInstanceCounter += 1;
-    _CCameraMoveControllerInstanceMap[instanceId] = _CameraMoveController(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CCameraMoveControllerInstanceMap[instanceId] = _CameraMoveController(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final position_CTimeIntervalFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CCameraPosition)>>, _CTimeInterval)>.listener(position_CTimeIntervalFunction);
+    final position_CTimeIntervalFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CCameraPosition)>>, _CTimeInterval)>.isolateLocal(position_CTimeIntervalFunction);
     res._position_CTimeInterval = position_CTimeIntervalFunctionCallable.nativeFunction;
-    final animationTimeFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CTimeInterval)>>)>.listener(animationTimeFunction);
+    final animationTimeFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CTimeInterval)>>)>.isolateLocal(animationTimeFunction);
     res._animationTime = animationTimeFunctionCallable.nativeFunction;
     return res;
   }
@@ -25723,7 +25641,7 @@ extension _DartTo_CCameraMoveController on CameraMoveController {
 class NewValuesNotifier implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CNewValuesNotifier_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CNewValuesNotifier_finalizePtr);
 
   NewValuesNotifier._raw(this._self);
   factory NewValuesNotifier._create(ffi.Pointer<ffi.Void> self) {
@@ -25908,7 +25826,7 @@ extension _CStyleZoomRelease on _CStyleZoom {
 class _CustomFollowControllerCpp extends CustomFollowController implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CCustomFollowControllerCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCustomFollowControllerCpp_finalizePtr);
 
   _CustomFollowControllerCpp._raw(this._self);
   factory _CustomFollowControllerCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -26359,9 +26277,9 @@ abstract class CustomFollowController {
 
 class _CustomFollowController {
   final CustomFollowController object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _CustomFollowController(this.object);
+  _CustomFollowController(this.object, this.callbackPort);
 }
 
 final class _CCustomFollowController extends ffi.Struct {
@@ -26369,6 +26287,8 @@ final class _CCustomFollowController extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptionSet_CFollowValue)>>)>> _availableValues;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptionSet_CFollowValue)>> _requestValues_COptionSet_CFollowValue;
@@ -26406,30 +26326,6 @@ extension _CCustomFollowControllerToDart on _CCustomFollowController {
 }
 
 extension _DartTo_CCustomFollowController on CustomFollowController {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CCustomFollowControllerInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CCustomFollowControllerInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CCustomFollowControllerInstanceMap.remove(platformValue.address);
-  }
-
   _CCustomFollowController _copyFromDartTo_CCustomFollowController() {
     var res = _CCustomFollowControllerMakeDefault();
     if (this is _CustomFollowControllerCpp) {
@@ -26439,26 +26335,26 @@ extension _DartTo_CCustomFollowController on CustomFollowController {
     }
     final instanceId = _CCustomFollowControllerInstanceCounter;
     _CCustomFollowControllerInstanceCounter += 1;
-    _CCustomFollowControllerInstanceMap[instanceId] = _CustomFollowController(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CCustomFollowControllerInstanceMap[instanceId] = _CustomFollowController(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final availableValuesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptionSet_CFollowValue)>>)>.listener(availableValuesFunction);
+    final availableValuesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptionSet_CFollowValue)>>)>.isolateLocal(availableValuesFunction);
     res._availableValues = availableValuesFunctionCallable.nativeFunction;
-    final requestValues_COptionSet_CFollowValueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptionSet_CFollowValue)>.listener(requestValues_COptionSet_CFollowValueFunction);
+    final requestValues_COptionSet_CFollowValueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptionSet_CFollowValue)>.isolateLocal(requestValues_COptionSet_CFollowValueFunction);
     res._requestValues_COptionSet_CFollowValue = requestValues_COptionSet_CFollowValueFunctionCallable.nativeFunction;
-    final setNewValuesNotifier_COptional_CNewValuesNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CNewValuesNotifier)>.listener(setNewValuesNotifier_COptional_CNewValuesNotifierFunction);
+    final setNewValuesNotifier_COptional_CNewValuesNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _COptional_CNewValuesNotifier)>.isolateLocal(setNewValuesNotifier_COptional_CNewValuesNotifierFunction);
     res._setNewValuesNotifier_COptional_CNewValuesNotifier = setNewValuesNotifier_COptional_CNewValuesNotifierFunctionCallable.nativeFunction;
-    final coordinatesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CGeoPoint)>>)>.listener(coordinatesFunction);
+    final coordinatesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CGeoPoint)>>)>.isolateLocal(coordinatesFunction);
     res._coordinates = coordinatesFunctionCallable.nativeFunction;
-    final bearingFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CBearing)>>)>.listener(bearingFunction);
+    final bearingFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CBearing)>>)>.isolateLocal(bearingFunction);
     res._bearing = bearingFunctionCallable.nativeFunction;
-    final tiltFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CTilt)>>)>.listener(tiltFunction);
+    final tiltFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CTilt)>>)>.isolateLocal(tiltFunction);
     res._tilt = tiltFunctionCallable.nativeFunction;
-    final styleZoomFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CStyleZoom)>>)>.listener(styleZoomFunction);
+    final styleZoomFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _COptional_CStyleZoom)>>)>.isolateLocal(styleZoomFunction);
     res._styleZoom = styleZoomFunctionCallable.nativeFunction;
     return res;
   }
@@ -26581,7 +26477,7 @@ extension _DartTo_CCustomFollowController on CustomFollowController {
 class Event implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CEvent_finalizePtr);
 
   Event._raw(this._self);
   factory Event._create(ffi.Pointer<ffi.Void> self) {
@@ -26696,7 +26592,7 @@ class InputEvent extends Event implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CInputEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CInputEvent_finalizePtr);
 
   InputEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory InputEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -26789,7 +26685,7 @@ extension _DartToCInputEvent on InputEvent {
  слежения и установке интерактивного режима карты.
 */
 class CancelEvent extends Event implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CCancelEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCancelEvent_finalizePtr);
 
   CancelEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory CancelEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -26869,7 +26765,7 @@ extension _DartToCCancelEvent on CancelEvent {
  Пока кинематика работает только для перемещения карты, но не для вращения и масштабирования.
 */
 class DirectMapControlBeginEvent extends Event implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CDirectMapControlBeginEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDirectMapControlBeginEvent_finalizePtr);
 
   DirectMapControlBeginEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory DirectMapControlBeginEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -26945,7 +26841,7 @@ extension _DartToCDirectMapControlBeginEvent on DirectMapControlBeginEvent {
  О событиях прямого управления картой описано в DirectMapControlBeginEvent.
 */
 class DirectMapControlEndEvent extends InputEvent implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CDirectMapControlEndEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDirectMapControlEndEvent_finalizePtr);
 
   DirectMapControlEndEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory DirectMapControlEndEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27031,7 +26927,7 @@ class DirectMapRotationEvent extends InputEvent implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CDirectMapRotationEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDirectMapRotationEvent_finalizePtr);
 
   DirectMapRotationEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory DirectMapRotationEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27164,7 +27060,7 @@ class DirectMapScalingEvent extends InputEvent implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CDirectMapScalingEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDirectMapScalingEvent_finalizePtr);
 
   DirectMapScalingEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory DirectMapScalingEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27259,7 +27155,7 @@ class DirectMapShiftEvent extends InputEvent implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CDirectMapShiftEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDirectMapShiftEvent_finalizePtr);
 
   DirectMapShiftEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory DirectMapShiftEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27349,7 +27245,7 @@ class DirectMapTiltEvent extends InputEvent implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CDirectMapTiltEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDirectMapTiltEvent_finalizePtr);
 
   DirectMapTiltEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory DirectMapTiltEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27476,7 +27372,7 @@ class MapRotationBeginEvent extends Event implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapRotationBeginEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapRotationBeginEvent_finalizePtr);
 
   MapRotationBeginEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory MapRotationBeginEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27551,7 +27447,7 @@ extension _DartToCMapRotationBeginEvent on MapRotationBeginEvent {
 
 /** Событие окончания вращения карты вокруг точки. */
 class MapRotationEndEvent extends Event implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CMapRotationEndEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapRotationEndEvent_finalizePtr);
 
   MapRotationEndEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory MapRotationEndEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27670,7 +27566,7 @@ class MapScalingBeginEvent extends Event implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapScalingBeginEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapScalingBeginEvent_finalizePtr);
 
   MapScalingBeginEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory MapScalingBeginEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27745,7 +27641,7 @@ extension _DartToCMapScalingBeginEvent on MapScalingBeginEvent {
 
 /** Событие окончания изменения масштаба. */
 class MapScalingEndEvent extends Event implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CMapScalingEndEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapScalingEndEvent_finalizePtr);
 
   MapScalingEndEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory MapScalingEndEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27868,7 +27764,7 @@ class MapShiftBeginEvent extends Event implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapShiftBeginEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapShiftBeginEvent_finalizePtr);
 
   MapShiftBeginEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory MapShiftBeginEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -27943,7 +27839,7 @@ extension _DartToCMapShiftBeginEvent on MapShiftBeginEvent {
 
 /** Событие окончания смещения карты. */
 class MapShiftEndEvent extends Event implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CMapShiftEndEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapShiftEndEvent_finalizePtr);
 
   MapShiftEndEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory MapShiftEndEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -28015,7 +27911,7 @@ extension _DartToCMapShiftEndEvent on MapShiftEndEvent {
 
 /** Событие поворота карты на север. */
 class RotateMapToNorthEvent extends Event implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CRotateMapToNorthEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRotateMapToNorthEvent_finalizePtr);
 
   RotateMapToNorthEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory RotateMapToNorthEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -28098,7 +27994,7 @@ class ScaleMapEvent extends Event implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CScaleMapEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CScaleMapEvent_finalizePtr);
 
   ScaleMapEvent._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory ScaleMapEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -28181,7 +28077,6 @@ extension _DartToCScaleMapEvent on ScaleMapEvent {
 
 class _Any {
   final Object object;
-  int refCounter = 1;
 
   _Any(this.object);
 }
@@ -28212,30 +28107,6 @@ extension _CAnyToDart on _CAny {
 }
 
 extension _DartTo_CAny on Object? {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final anyValue = value.cast<ffi.Int64>();
-    if (anyValue.address == 0) {
-      return;
-    }
-    _CAnyInstanceMap[anyValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final anyValue = value.cast<ffi.Int64>();
-    if (anyValue.address == 0) {
-      return;
-    }
-    final anyObject = _CAnyInstanceMap[anyValue.address];
-    if (anyObject == null) {
-      return;
-    }
-    anyObject.refCounter -= 1;
-    if (anyObject.refCounter > 0) {
-      return;
-    }
-    _CAnyInstanceMap.remove(anyValue.address);
-  }
-
   _CAny _copyFromDartTo_CAny() {
     var res = _CAnyMakeDefault();
     if (this == null) {
@@ -28243,12 +28114,10 @@ extension _DartTo_CAny on Object? {
     }
     final instanceId = _CAnyInstanceCounter;
     _CAnyInstanceCounter += 1;
+    // The registry roots this value until isolate teardown; native copies
+    // carry an opaque ID and need no Dart retain/release callbacks.
     _CAnyInstanceMap[instanceId] = _Any(this!);
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
     return res;
   }
 }
@@ -28525,7 +28394,7 @@ class Attributes implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CAttributes_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CAttributes_finalizePtr);
 
   Attributes._raw(this._self);
   factory Attributes._create(ffi.Pointer<ffi.Void> self) {
@@ -28681,13 +28550,14 @@ class _CChannel_CArray_CStringImpl extends Channel<List<String>> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CString, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CString, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<List<String>>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -28697,8 +28567,8 @@ class _CChannel_CArray_CStringImpl extends Channel<List<String>> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -28723,8 +28593,10 @@ extension _CChannel_CArray_CStringBasicFunctions on _CChannel_CArray_CString {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CArray_CString, ffi.Int64)> callback) {
-    return _CChannel_CArray_CStringConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CArray_CString, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CChannel_CArray_CStringConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -28844,7 +28716,7 @@ class AnimationSettings implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CAnimationSettings_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CAnimationSettings_finalizePtr);
 
   AnimationSettings._raw(this._self);
   factory AnimationSettings._create(ffi.Pointer<ffi.Void> self) {
@@ -28999,7 +28871,7 @@ class MapObject implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapObject_finalizePtr);
 
   MapObject._raw(this._self);
   factory MapObject._create(ffi.Pointer<ffi.Void> self) {
@@ -29177,7 +29049,7 @@ class GeometryMapObject extends MapObject implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CGeometryMapObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CGeometryMapObject_finalizePtr);
 
   GeometryMapObject._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory GeometryMapObject._create(ffi.Pointer<ffi.Void> self) {
@@ -29268,13 +29140,14 @@ class _CStatefulChannel_CGeometryImpl extends StatefulChannel<Geometry> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CGeometry, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CGeometry, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<Geometry>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -29284,8 +29157,8 @@ class _CStatefulChannel_CGeometryImpl extends StatefulChannel<Geometry> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -29317,8 +29190,10 @@ extension _CStatefulChannel_CGeometryBasicFunctions on _CStatefulChannel_CGeomet
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CGeometry, ffi.Int64)> callback) {
-    return _CStatefulChannel_CGeometryConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CGeometry, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CGeometryConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -29362,13 +29237,14 @@ class _CStatefulChannel_boolImpl extends StatefulChannel<bool> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<bool>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -29378,8 +29254,8 @@ class _CStatefulChannel_boolImpl extends StatefulChannel<bool> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -29411,8 +29287,10 @@ extension _CStatefulChannel_boolBasicFunctions on _CStatefulChannel_bool {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)> callback) {
-    return _CStatefulChannel_boolConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_boolConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -29457,7 +29335,7 @@ class ClusterObject extends MapObject implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CClusterObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CClusterObject_finalizePtr);
 
   ClusterObject._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory ClusterObject._create(ffi.Pointer<ffi.Void> self) {
@@ -29613,7 +29491,7 @@ class DgisMapObject extends MapObject implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CDgisMapObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDgisMapObject_finalizePtr);
 
   DgisMapObject._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory DgisMapObject._create(ffi.Pointer<ffi.Void> self) {
@@ -29699,7 +29577,7 @@ extension _DartToCDgisMapObject on DgisMapObject {
 class Source implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSource_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSource_finalizePtr);
 
   Source._raw(this._self);
   factory Source._create(ffi.Pointer<ffi.Void> self) {
@@ -29804,7 +29682,7 @@ class DgisSource extends Source implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CDgisSource_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDgisSource_finalizePtr);
 
   DgisSource._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory DgisSource._create(ffi.Pointer<ffi.Void> self) {
@@ -29952,13 +29830,14 @@ class _CStatefulChannel_CArray_CDgisObjectIdImpl extends StatefulChannel<List<Dg
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CDgisObjectId, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CDgisObjectId, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<List<DgisObjectId>>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -29968,8 +29847,8 @@ class _CStatefulChannel_CArray_CDgisObjectIdImpl extends StatefulChannel<List<Dg
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -30001,8 +29880,10 @@ extension _CStatefulChannel_CArray_CDgisObjectIdBasicFunctions on _CStatefulChan
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CArray_CDgisObjectId, ffi.Int64)> callback) {
-    return _CStatefulChannel_CArray_CDgisObjectIdConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CArray_CDgisObjectId, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CArray_CDgisObjectIdConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -30031,7 +29912,7 @@ extension _DartTo_CStatefulChannel_CArray_CDgisObjectId on StatefulChannel<List<
 class FollowController implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CFollowController_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CFollowController_finalizePtr);
 
   FollowController._raw(this._self);
   factory FollowController._create(ffi.Pointer<ffi.Void> self) {
@@ -30130,7 +30011,7 @@ class GeometryMapObjectSource extends Source implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CGeometryMapObjectSource_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CGeometryMapObjectSource_finalizePtr);
 
   GeometryMapObjectSource._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory GeometryMapObjectSource._create(ffi.Pointer<ffi.Void> self) {
@@ -30335,7 +30216,7 @@ extension _CArray_CMapObjectBasicFunctions on _CArray_CMapObject {
 class Image implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CImage_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CImage_finalizePtr);
 
   Image._raw(this._self);
   factory Image._create(ffi.Pointer<ffi.Void> self) {
@@ -30416,7 +30297,7 @@ extension _DartToCImage on Image {
 class _ImageLoaderCpp extends ImageLoader implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CImageLoaderCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CImageLoaderCpp_finalizePtr);
 
   _ImageLoaderCpp._raw(this._self);
   factory _ImageLoaderCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -30615,9 +30496,9 @@ abstract class ImageLoader {
 
 class _ImageLoader {
   final ImageLoader object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _ImageLoader(this.object);
+  _ImageLoader(this.object, this.callbackPort);
 }
 
 final class _CImageLoader extends ffi.Struct {
@@ -30625,6 +30506,8 @@ final class _CImageLoader extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CImageData)>>)>> _load;
 }
@@ -30656,30 +30539,6 @@ extension _CImageLoaderToDart on _CImageLoader {
 }
 
 extension _DartTo_CImageLoader on ImageLoader {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CImageLoaderInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CImageLoaderInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CImageLoaderInstanceMap.remove(platformValue.address);
-  }
-
   _CImageLoader _copyFromDartTo_CImageLoader() {
     var res = _CImageLoaderMakeDefault();
     if (this is _ImageLoaderCpp) {
@@ -30689,14 +30548,14 @@ extension _DartTo_CImageLoader on ImageLoader {
     }
     final instanceId = _CImageLoaderInstanceCounter;
     _CImageLoaderInstanceCounter += 1;
-    _CImageLoaderInstanceMap[instanceId] = _ImageLoader(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CImageLoaderInstanceMap[instanceId] = _ImageLoader(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final loadFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CImageData)>>)>.listener(loadFunction);
+    final loadFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CImageData)>>)>.isolateLocal(loadFunction);
     res._load = loadFunctionCallable.nativeFunction;
     return res;
   }
@@ -30723,7 +30582,7 @@ extension _DartTo_CImageLoader on ImageLoader {
 
 /** Контроллер слежения за направлением карты. */
 class BearingFollowController extends FollowController implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CBearingFollowController_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CBearingFollowController_finalizePtr);
 
   BearingFollowController._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory BearingFollowController._create(ffi.Pointer<ffi.Void> self) {
@@ -30809,7 +30668,7 @@ extension _DartToCBearingFollowController on BearingFollowController {
 
 /** Контроллер слежения за координатами позиции карты. */
 class CoordinatesFollowController extends FollowController implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CCoordinatesFollowController_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCoordinatesFollowController_finalizePtr);
 
   CoordinatesFollowController._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory CoordinatesFollowController._create(ffi.Pointer<ffi.Void> self) {
@@ -31064,7 +30923,7 @@ extension _DartTo_CMyLocationMapObjectMarkerType on MyLocationMapObjectMarkerTyp
 class ModelData implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CModelData_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CModelData_finalizePtr);
 
   ModelData._raw(this._self);
   factory ModelData._create(ffi.Pointer<ffi.Void> self) {
@@ -31146,7 +31005,7 @@ extension _DartToCModelData on ModelData {
 class _ModelDataLoaderCpp extends ModelDataLoader implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CModelDataLoaderCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CModelDataLoaderCpp_finalizePtr);
 
   _ModelDataLoaderCpp._raw(this._self);
   factory _ModelDataLoaderCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -31228,9 +31087,9 @@ abstract class ModelDataLoader {
 
 class _ModelDataLoader {
   final ModelDataLoader object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _ModelDataLoader(this.object);
+  _ModelDataLoader(this.object, this.callbackPort);
 }
 
 final class _CModelDataLoader extends ffi.Struct {
@@ -31238,6 +31097,8 @@ final class _CModelDataLoader extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CData)>>)>> _load;
 }
@@ -31269,30 +31130,6 @@ extension _CModelDataLoaderToDart on _CModelDataLoader {
 }
 
 extension _DartTo_CModelDataLoader on ModelDataLoader {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CModelDataLoaderInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CModelDataLoaderInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CModelDataLoaderInstanceMap.remove(platformValue.address);
-  }
-
   _CModelDataLoader _copyFromDartTo_CModelDataLoader() {
     var res = _CModelDataLoaderMakeDefault();
     if (this is _ModelDataLoaderCpp) {
@@ -31302,14 +31139,14 @@ extension _DartTo_CModelDataLoader on ModelDataLoader {
     }
     final instanceId = _CModelDataLoaderInstanceCounter;
     _CModelDataLoaderInstanceCounter += 1;
-    _CModelDataLoaderInstanceMap[instanceId] = _ModelDataLoader(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CModelDataLoaderInstanceMap[instanceId] = _ModelDataLoader(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final loadFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CData)>>)>.listener(loadFunction);
+    final loadFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CData)>>)>.isolateLocal(loadFunction);
     res._load = loadFunctionCallable.nativeFunction;
     return res;
   }
@@ -31351,7 +31188,7 @@ class MyLocationMapObject extends MapObject implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMyLocationMapObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMyLocationMapObject_finalizePtr);
 
   MyLocationMapObject._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory MyLocationMapObject._create(ffi.Pointer<ffi.Void> self) {
@@ -31474,7 +31311,7 @@ class MyLocationMapObjectSource extends Source implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMyLocationMapObjectSource_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMyLocationMapObjectSource_finalizePtr);
 
   MyLocationMapObjectSource._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory MyLocationMapObjectSource._create(ffi.Pointer<ffi.Void> self) {
@@ -31574,7 +31411,7 @@ class RoadEventMapObject extends MapObject implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CRoadEventMapObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRoadEventMapObject_finalizePtr);
 
   RoadEventMapObject._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory RoadEventMapObject._create(ffi.Pointer<ffi.Void> self) {
@@ -31789,7 +31626,7 @@ class RoadEvent implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CRoadEvent_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRoadEvent_finalizePtr);
 
   RoadEvent._raw(this._self);
   factory RoadEvent._create(ffi.Pointer<ffi.Void> self) {
@@ -32747,16 +32584,14 @@ final class _CFuture_CArray_CRoadEventPhoto extends ffi.Struct {
 
 class _CFuture_CArray_CRoadEventPhoto_Cancellable {
   final Completer<List<RoadEventPhoto>> completer;
-  final _CFuture_CArray_CRoadEventPhoto _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CArray_CRoadEventPhoto, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CArray_CRoadEventPhoto_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -32766,8 +32601,7 @@ class _CFuture_CArray_CRoadEventPhoto_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -32812,23 +32646,26 @@ extension _CFuture_CArray_CRoadEventPhotoToDart on _CFuture_CArray_CRoadEventPho
   }
 
   CancelableOperation<List<RoadEventPhoto>> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<List<RoadEventPhoto>>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CRoadEventPhoto, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CRoadEventPhoto, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CArray_CRoadEventPhotoReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CArray_CRoadEventPhoto_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -32930,7 +32767,7 @@ class RoadEventPhoto implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CRoadEventPhoto_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRoadEventPhoto_finalizePtr);
 
   RoadEventPhoto._raw(this._self);
   factory RoadEventPhoto._create(ffi.Pointer<ffi.Void> self) {
@@ -33067,16 +32904,14 @@ final class _CFuture_CActionResult extends ffi.Struct {
 
 class _CFuture_CActionResult_Cancellable {
   final Completer<ActionResult> completer;
-  final _CFuture_CActionResult _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CActionResult, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CActionResult_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -33086,8 +32921,7 @@ class _CFuture_CActionResult_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -33132,23 +32966,26 @@ extension _CFuture_CActionResultToDart on _CFuture_CActionResult {
   }
 
   CancelableOperation<ActionResult> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<ActionResult>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CActionResult, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CActionResult, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CActionResultReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CActionResult_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -33175,7 +33012,7 @@ extension _DartTo_CFuture_CActionResult on CancelableOperation<ActionResult> {
 class Remover implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CRemover_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRemover_finalizePtr);
 
   Remover._raw(this._self);
   factory Remover._create(ffi.Pointer<ffi.Void> self) {
@@ -33407,7 +33244,7 @@ class RoadEventAction implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CRoadEventAction_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRoadEventAction_finalizePtr);
 
   RoadEventAction._raw(this._self);
   factory RoadEventAction._create(ffi.Pointer<ffi.Void> self) {
@@ -33527,13 +33364,14 @@ class _CStatefulChannel_CRoadEventActionInfoImpl extends StatefulChannel<RoadEve
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CRoadEventActionInfo, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CRoadEventActionInfo, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<RoadEventActionInfo>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -33543,8 +33381,8 @@ class _CStatefulChannel_CRoadEventActionInfoImpl extends StatefulChannel<RoadEve
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -33576,8 +33414,10 @@ extension _CStatefulChannel_CRoadEventActionInfoBasicFunctions on _CStatefulChan
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CRoadEventActionInfo, ffi.Int64)> callback) {
-    return _CStatefulChannel_CRoadEventActionInfoConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CRoadEventActionInfo, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CRoadEventActionInfoConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -33750,7 +33590,7 @@ class Style implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CStyle_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CStyle_finalizePtr);
 
   Style._raw(this._self);
   factory Style._create(ffi.Pointer<ffi.Void> self) {
@@ -33817,7 +33657,7 @@ extension _DartToCStyle on Style {
 
 /** Контроллер слежения за стилевым уровнем масштабирования карты. */
 class StyleZoomFollowController extends FollowController implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CStyleZoomFollowController_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CStyleZoomFollowController_finalizePtr);
 
   StyleZoomFollowController._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory StyleZoomFollowController._create(ffi.Pointer<ffi.Void> self) {
@@ -33955,7 +33795,7 @@ extension _CResult_CStyleZoomFollowControllerToDart on _CResult_CStyleZoomFollow
 class _StyleZoomToTiltRelationCpp extends StyleZoomToTiltRelation implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CStyleZoomToTiltRelationCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CStyleZoomToTiltRelationCpp_finalizePtr);
 
   _StyleZoomToTiltRelationCpp._raw(this._self);
   factory _StyleZoomToTiltRelationCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -34047,9 +33887,9 @@ abstract class StyleZoomToTiltRelation {
 
 class _StyleZoomToTiltRelation {
   final StyleZoomToTiltRelation object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _StyleZoomToTiltRelation(this.object);
+  _StyleZoomToTiltRelation(this.object, this.callbackPort);
 }
 
 final class _CStyleZoomToTiltRelation extends ffi.Struct {
@@ -34057,6 +33897,8 @@ final class _CStyleZoomToTiltRelation extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CTilt)>>, _CStyleZoom)>> _styleZoomToTilt_CStyleZoom;
 }
@@ -34088,30 +33930,6 @@ extension _CStyleZoomToTiltRelationToDart on _CStyleZoomToTiltRelation {
 }
 
 extension _DartTo_CStyleZoomToTiltRelation on StyleZoomToTiltRelation {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CStyleZoomToTiltRelationInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CStyleZoomToTiltRelationInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CStyleZoomToTiltRelationInstanceMap.remove(platformValue.address);
-  }
-
   _CStyleZoomToTiltRelation _copyFromDartTo_CStyleZoomToTiltRelation() {
     var res = _CStyleZoomToTiltRelationMakeDefault();
     if (this is _StyleZoomToTiltRelationCpp) {
@@ -34121,14 +33939,14 @@ extension _DartTo_CStyleZoomToTiltRelation on StyleZoomToTiltRelation {
     }
     final instanceId = _CStyleZoomToTiltRelationInstanceCounter;
     _CStyleZoomToTiltRelationInstanceCounter += 1;
-    _CStyleZoomToTiltRelationInstanceMap[instanceId] = _StyleZoomToTiltRelation(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CStyleZoomToTiltRelationInstanceMap[instanceId] = _StyleZoomToTiltRelation(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final styleZoomToTilt_CStyleZoomFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CTilt)>>, _CStyleZoom)>.listener(styleZoomToTilt_CStyleZoomFunction);
+    final styleZoomToTilt_CStyleZoomFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CTilt)>>, _CStyleZoom)>.isolateLocal(styleZoomToTilt_CStyleZoomFunction);
     res._styleZoomToTilt_CStyleZoom = styleZoomToTilt_CStyleZoomFunctionCallable.nativeFunction;
     return res;
   }
@@ -34157,7 +33975,7 @@ extension _DartTo_CStyleZoomToTiltRelation on StyleZoomToTiltRelation {
 
 /** Контроллер слежения за углом наклона карты. */
 class TiltFollowController extends FollowController implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CTiltFollowController_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CTiltFollowController_finalizePtr);
 
   TiltFollowController._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory TiltFollowController._create(ffi.Pointer<ffi.Void> self) {
@@ -34238,7 +34056,7 @@ extension _DartToCTiltFollowController on TiltFollowController {
 
 /** Интерфейс класса, управляющего отображением пробок на карте. */
 class TrafficSource extends Source implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CTrafficSource_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CTrafficSource_finalizePtr);
 
   TrafficSource._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory TrafficSource._create(ffi.Pointer<ffi.Void> self) {
@@ -34392,7 +34210,7 @@ extension _CRoadEventFilterDataRelease on _CRoadEventFilterData {
 class _RoadEventFilterCpp extends RoadEventFilter implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CRoadEventFilterCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRoadEventFilterCpp_finalizePtr);
 
   _RoadEventFilterCpp._raw(this._self);
   factory _RoadEventFilterCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -34476,9 +34294,9 @@ abstract class RoadEventFilter {
 
 class _RoadEventFilter {
   final RoadEventFilter object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _RoadEventFilter(this.object);
+  _RoadEventFilter(this.object, this.callbackPort);
 }
 
 final class _CRoadEventFilter extends ffi.Struct {
@@ -34486,6 +34304,8 @@ final class _CRoadEventFilter extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>>, _CRoadEventFilterData)>> _passes_CRoadEventFilterData;
 }
@@ -34517,30 +34337,6 @@ extension _CRoadEventFilterToDart on _CRoadEventFilter {
 }
 
 extension _DartTo_CRoadEventFilter on RoadEventFilter {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CRoadEventFilterInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CRoadEventFilterInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CRoadEventFilterInstanceMap.remove(platformValue.address);
-  }
-
   _CRoadEventFilter _copyFromDartTo_CRoadEventFilter() {
     var res = _CRoadEventFilterMakeDefault();
     if (this is _RoadEventFilterCpp) {
@@ -34550,14 +34346,14 @@ extension _DartTo_CRoadEventFilter on RoadEventFilter {
     }
     final instanceId = _CRoadEventFilterInstanceCounter;
     _CRoadEventFilterInstanceCounter += 1;
-    _CRoadEventFilterInstanceMap[instanceId] = _RoadEventFilter(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CRoadEventFilterInstanceMap[instanceId] = _RoadEventFilter(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final passes_CRoadEventFilterDataFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>>, _CRoadEventFilterData)>.listener(passes_CRoadEventFilterDataFunction);
+    final passes_CRoadEventFilterDataFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>>, _CRoadEventFilterData)>.isolateLocal(passes_CRoadEventFilterDataFunction);
     res._passes_CRoadEventFilterData = passes_CRoadEventFilterDataFunctionCallable.nativeFunction;
     return res;
   }
@@ -34613,7 +34409,7 @@ class RoadEventSource extends Source implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CRoadEventSource_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRoadEventSource_finalizePtr);
 
   RoadEventSource._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory RoadEventSource._create(ffi.Pointer<ffi.Void> self) {
@@ -34789,7 +34585,7 @@ extension _CResult_CRoadEventSourceToDart on _CResult_CRoadEventSource {
 class DefaultRoadEventFilter implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CDefaultRoadEventFilter_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CDefaultRoadEventFilter_finalizePtr);
 
   DefaultRoadEventFilter._raw(this._self);
   factory DefaultRoadEventFilter._create(ffi.Pointer<ffi.Void> self) {
@@ -36497,7 +36293,7 @@ extension _CCameraZoomRestrictionsRelease on _CCameraZoomRestrictions {
 class GeometryMapObjectBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CGeometryMapObjectBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CGeometryMapObjectBuilder_finalizePtr);
 
   GeometryMapObjectBuilder._raw(this._self);
   factory GeometryMapObjectBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -37224,7 +37020,7 @@ class BaseCamera implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CBaseCamera_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CBaseCamera_finalizePtr);
 
   BaseCamera._raw(this._self);
   factory BaseCamera._create(ffi.Pointer<ffi.Void> self) {
@@ -37356,7 +37152,7 @@ extension _DartToCBaseCamera on BaseCamera {
 class Projection implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CProjection_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CProjection_finalizePtr);
 
   Projection._raw(this._self);
   factory Projection._create(ffi.Pointer<ffi.Void> self) {
@@ -37647,13 +37443,14 @@ class _CChannel_CCameraChangeImpl extends Channel<CameraChange> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CCameraChange, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CCameraChange, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<CameraChange>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -37663,8 +37460,8 @@ class _CChannel_CCameraChangeImpl extends Channel<CameraChange> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -37689,8 +37486,10 @@ extension _CChannel_CCameraChangeBasicFunctions on _CChannel_CCameraChange {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CCameraChange, ffi.Int64)> callback) {
-    return _CChannel_CCameraChangeConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CCameraChange, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CChannel_CCameraChangeConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -37890,7 +37689,7 @@ class SimpleMapObject extends MapObject implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSimpleMapObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSimpleMapObject_finalizePtr);
 
   SimpleMapObject._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory SimpleMapObject._create(ffi.Pointer<ffi.Void> self) {
@@ -38183,7 +37982,7 @@ Zoom styleZToProjectionZ(
 class GeometryMapObjectSourceBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CGeometryMapObjectSourceBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CGeometryMapObjectSourceBuilder_finalizePtr);
 
   GeometryMapObjectSourceBuilder._raw(this._self);
   factory GeometryMapObjectSourceBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -38580,7 +38379,7 @@ class IndoorBuilding implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CIndoorBuilding_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CIndoorBuilding_finalizePtr);
 
   IndoorBuilding._raw(this._self);
   factory IndoorBuilding._create(ffi.Pointer<ffi.Void> self) {
@@ -38691,13 +38490,14 @@ class _CStatefulChannel_uint64_tImpl extends StatefulChannel<int> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Uint64, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Uint64, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<int>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -38707,8 +38507,8 @@ class _CStatefulChannel_uint64_tImpl extends StatefulChannel<int> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -38740,8 +38540,10 @@ extension _CStatefulChannel_uint64_tBasicFunctions on _CStatefulChannel_uint64_t
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(ffi.Uint64, ffi.Int64)> callback) {
-    return _CStatefulChannel_uint64_tConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(ffi.Uint64, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_uint64_tConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -38785,13 +38587,14 @@ class _CStatefulChannel_CIndoorBuildingModeImpl extends StatefulChannel<IndoorBu
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CIndoorBuildingMode, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CIndoorBuildingMode, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<IndoorBuildingMode>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -38801,8 +38604,8 @@ class _CStatefulChannel_CIndoorBuildingModeImpl extends StatefulChannel<IndoorBu
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -38834,8 +38637,10 @@ extension _CStatefulChannel_CIndoorBuildingModeBasicFunctions on _CStatefulChann
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CIndoorBuildingMode, ffi.Int64)> callback) {
-    return _CStatefulChannel_CIndoorBuildingModeConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CIndoorBuildingMode, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CIndoorBuildingModeConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -38921,7 +38726,7 @@ class IndoorManager implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CIndoorManager_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CIndoorManager_finalizePtr);
 
   IndoorManager._raw(this._self);
   factory IndoorManager._create(ffi.Pointer<ffi.Void> self) {
@@ -39023,13 +38828,14 @@ class _CStatefulChannel_COptional_CIndoorBuildingImpl extends StatefulChannel<In
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CIndoorBuilding, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CIndoorBuilding, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<IndoorBuilding?>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -39039,8 +38845,8 @@ class _CStatefulChannel_COptional_CIndoorBuildingImpl extends StatefulChannel<In
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -39072,8 +38878,10 @@ extension _CStatefulChannel_COptional_CIndoorBuildingBasicFunctions on _CStatefu
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_COptional_CIndoorBuilding, ffi.Int64)> callback) {
-    return _CStatefulChannel_COptional_CIndoorBuildingConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_COptional_CIndoorBuilding, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_COptional_CIndoorBuildingConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -39182,7 +38990,7 @@ class IndoorControlModel implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CIndoorControlModel_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CIndoorControlModel_finalizePtr);
 
   IndoorControlModel._raw(this._self);
   factory IndoorControlModel._create(ffi.Pointer<ffi.Void> self) {
@@ -39292,13 +39100,14 @@ class _CStatefulChannel_COptional_uint64_tImpl extends StatefulChannel<int?> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_uint64_t, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_uint64_t, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<int?>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -39308,8 +39117,8 @@ class _CStatefulChannel_COptional_uint64_tImpl extends StatefulChannel<int?> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -39341,8 +39150,10 @@ extension _CStatefulChannel_COptional_uint64_tBasicFunctions on _CStatefulChanne
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_COptional_uint64_t, ffi.Int64)> callback) {
-    return _CStatefulChannel_COptional_uint64_tConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_COptional_uint64_t, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_COptional_uint64_tConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -39429,13 +39240,14 @@ class _CStatefulChannel_CArray_CStringImpl extends StatefulChannel<List<String>>
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CString, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CString, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<List<String>>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -39445,8 +39257,8 @@ class _CStatefulChannel_CArray_CStringImpl extends StatefulChannel<List<String>>
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -39478,8 +39290,10 @@ extension _CStatefulChannel_CArray_CStringBasicFunctions on _CStatefulChannel_CA
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CArray_CString, ffi.Int64)> callback) {
-    return _CStatefulChannel_CArray_CStringConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CArray_CString, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CArray_CStringConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -39800,7 +39614,7 @@ class Map implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMap_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMap_finalizePtr);
 
   Map._raw(this._self);
   factory Map._create(ffi.Pointer<ffi.Void> self) {
@@ -40014,7 +39828,7 @@ class Camera extends BaseCamera implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCamera_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCamera_finalizePtr);
 
   Camera._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory Camera._create(ffi.Pointer<ffi.Void> self) {
@@ -40217,16 +40031,14 @@ final class _CFuture_CCameraAnimatedMoveResult extends ffi.Struct {
 
 class _CFuture_CCameraAnimatedMoveResult_Cancellable {
   final Completer<CameraAnimatedMoveResult> completer;
-  final _CFuture_CCameraAnimatedMoveResult _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CCameraAnimatedMoveResult, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CCameraAnimatedMoveResult_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -40236,8 +40048,7 @@ class _CFuture_CCameraAnimatedMoveResult_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -40282,23 +40093,26 @@ extension _CFuture_CCameraAnimatedMoveResultToDart on _CFuture_CCameraAnimatedMo
   }
 
   CancelableOperation<CameraAnimatedMoveResult> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<CameraAnimatedMoveResult>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CCameraAnimatedMoveResult, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CCameraAnimatedMoveResult, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CCameraAnimatedMoveResultReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CCameraAnimatedMoveResult_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -40347,13 +40161,14 @@ class _CStatefulChannel_CMapDataLoadingStateImpl extends StatefulChannel<MapData
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMapDataLoadingState, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMapDataLoadingState, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<MapDataLoadingState>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -40363,8 +40178,8 @@ class _CStatefulChannel_CMapDataLoadingStateImpl extends StatefulChannel<MapData
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -40396,8 +40211,10 @@ extension _CStatefulChannel_CMapDataLoadingStateBasicFunctions on _CStatefulChan
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CMapDataLoadingState, ffi.Int64)> callback) {
-    return _CStatefulChannel_CMapDataLoadingStateConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CMapDataLoadingState, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CMapDataLoadingStateConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -40441,13 +40258,14 @@ class _CStatefulChannel_CStyleImpl extends StatefulChannel<Style> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CStyle, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CStyle, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<Style>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -40457,8 +40275,8 @@ class _CStatefulChannel_CStyleImpl extends StatefulChannel<Style> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -40490,8 +40308,10 @@ extension _CStatefulChannel_CStyleBasicFunctions on _CStatefulChannel_CStyle {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CStyle, ffi.Int64)> callback) {
-    return _CStatefulChannel_CStyleConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CStyle, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CStyleConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -40535,13 +40355,14 @@ class _CStatefulChannel_floatImpl extends StatefulChannel<double> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Float, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Float, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<double>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -40551,8 +40372,8 @@ class _CStatefulChannel_floatImpl extends StatefulChannel<double> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -40584,8 +40405,10 @@ extension _CStatefulChannel_floatBasicFunctions on _CStatefulChannel_float {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(ffi.Float, ffi.Int64)> callback) {
-    return _CStatefulChannel_floatConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(ffi.Float, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_floatConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -40652,16 +40475,14 @@ final class _CFuture_CArray_CRenderedObjectInfo extends ffi.Struct {
 
 class _CFuture_CArray_CRenderedObjectInfo_Cancellable {
   final Completer<List<RenderedObjectInfo>> completer;
-  final _CFuture_CArray_CRenderedObjectInfo _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CArray_CRenderedObjectInfo_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -40671,8 +40492,7 @@ class _CFuture_CArray_CRenderedObjectInfo_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -40717,23 +40537,26 @@ extension _CFuture_CArray_CRenderedObjectInfoToDart on _CFuture_CArray_CRendered
   }
 
   CancelableOperation<List<RenderedObjectInfo>> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<List<RenderedObjectInfo>>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CArray_CRenderedObjectInfoReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CArray_CRenderedObjectInfo_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -40902,13 +40725,14 @@ class _CStatefulChannel_CMapVisibilityStateImpl extends StatefulChannel<MapVisib
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMapVisibilityState, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMapVisibilityState, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<MapVisibilityState>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -40918,8 +40742,8 @@ class _CStatefulChannel_CMapVisibilityStateImpl extends StatefulChannel<MapVisib
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -40951,8 +40775,10 @@ extension _CStatefulChannel_CMapVisibilityStateBasicFunctions on _CStatefulChann
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CMapVisibilityState, ffi.Int64)> callback) {
-    return _CStatefulChannel_CMapVisibilityStateConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CMapVisibilityState, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CMapVisibilityStateConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -40991,13 +40817,14 @@ class _CChannel_boolImpl extends Channel<bool> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<bool>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -41007,8 +40834,8 @@ class _CChannel_boolImpl extends Channel<bool> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -41033,8 +40860,10 @@ extension _CChannel_boolBasicFunctions on _CChannel_bool {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)> callback) {
-    return _CChannel_boolConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CChannel_boolConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -41078,13 +40907,14 @@ class _CStatefulChannel_CProductTypeImpl extends StatefulChannel<ProductType> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CProductType, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CProductType, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<ProductType>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -41094,8 +40924,8 @@ class _CStatefulChannel_CProductTypeImpl extends StatefulChannel<ProductType> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -41127,8 +40957,10 @@ extension _CStatefulChannel_CProductTypeBasicFunctions on _CStatefulChannel_CPro
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CProductType, ffi.Int64)> callback) {
-    return _CStatefulChannel_CProductTypeConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CProductType, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CProductTypeConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -41210,13 +41042,14 @@ class _CStatefulChannel_COptional_CGraphicsPresetImpl extends StatefulChannel<Gr
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CGraphicsPreset, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CGraphicsPreset, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<GraphicsPreset?>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -41226,8 +41059,8 @@ class _CStatefulChannel_COptional_CGraphicsPresetImpl extends StatefulChannel<Gr
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -41259,8 +41092,10 @@ extension _CStatefulChannel_COptional_CGraphicsPresetBasicFunctions on _CStatefu
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_COptional_CGraphicsPreset, ffi.Int64)> callback) {
-    return _CStatefulChannel_COptional_CGraphicsPresetConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_COptional_CGraphicsPreset, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_COptional_CGraphicsPresetConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -41340,13 +41175,14 @@ class _CStatefulChannel_CUniverseDrawingModeImpl extends StatefulChannel<Univers
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<UniverseDrawingMode>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -41356,8 +41192,8 @@ class _CStatefulChannel_CUniverseDrawingModeImpl extends StatefulChannel<Univers
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -41389,8 +41225,10 @@ extension _CStatefulChannel_CUniverseDrawingModeBasicFunctions on _CStatefulChan
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)> callback) {
-    return _CStatefulChannel_CUniverseDrawingModeConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CUniverseDrawingModeConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -41434,13 +41272,14 @@ class _CStatefulChannel_CMapThemeImpl extends StatefulChannel<MapTheme> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMapTheme, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMapTheme, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<MapTheme>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -41450,8 +41289,8 @@ class _CStatefulChannel_CMapThemeImpl extends StatefulChannel<MapTheme> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -41483,8 +41322,10 @@ extension _CStatefulChannel_CMapThemeBasicFunctions on _CStatefulChannel_CMapThe
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CMapTheme, ffi.Int64)> callback) {
-    return _CStatefulChannel_CMapThemeConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CMapTheme, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CMapThemeConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -41508,16 +41349,14 @@ final class _CFuture_COptional_CRenderedObjectInfo extends ffi.Struct {
 
 class _CFuture_COptional_CRenderedObjectInfo_Cancellable {
   final Completer<RenderedObjectInfo?> completer;
-  final _CFuture_COptional_CRenderedObjectInfo _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_COptional_CRenderedObjectInfo, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_COptional_CRenderedObjectInfo_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -41527,8 +41366,7 @@ class _CFuture_COptional_CRenderedObjectInfo_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -41573,23 +41411,26 @@ extension _CFuture_COptional_CRenderedObjectInfoToDart on _CFuture_COptional_CRe
   }
 
   CancelableOperation<RenderedObjectInfo?> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<RenderedObjectInfo?>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CRenderedObjectInfo, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CRenderedObjectInfo, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_COptional_CRenderedObjectInfoReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_COptional_CRenderedObjectInfo_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -41646,6 +41487,311 @@ extension _DartTo_COptional_CRenderedObjectInfo on RenderedObjectInfo? {
     return cOptional;
   }
 }
+// MARK: - MapObjectTransform
+
+/**
+ Временное изменение положения объекта на кадр.
+
+ Положение применяется через перемещение компонента и не меняет геометрию объекта.
+*/
+class MapObjectTransform {
+  final SimpleMapObject item;
+  final GeoPointWithElevation position;
+
+  const MapObjectTransform({
+    required this.item,
+    required this.position
+  });
+
+  MapObjectTransform copyWith({
+    SimpleMapObject? item,
+    GeoPointWithElevation? position
+  }) {
+    return MapObjectTransform(
+      item: item ?? this.item,
+      position: position ?? this.position
+    );
+  }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is MapObjectTransform &&
+    other.runtimeType == runtimeType &&
+    other.item == item &&
+    other.position == position;
+
+  @override
+  int get hashCode {
+    return Object.hash(item, position);
+  }
+
+}
+final class _CMapObjectTransform extends ffi.Struct {
+  external _CSimpleMapObject item;
+
+  external _CGeoPointWithElevation position;
+
+}
+// MARK: - MapObjectTransform <-> _CMapObjectTransform
+
+extension _CMapObjectTransformToDart on _CMapObjectTransform {
+  MapObjectTransform _toDart() {
+    return MapObjectTransform(
+      item: this.item._toDart(),
+      position: this.position._toDart()
+    );
+  }
+}
+
+extension _DartTo_CMapObjectTransform on MapObjectTransform {
+  _CMapObjectTransform _copyFromDartTo_CMapObjectTransform() {
+    final res = _CMapObjectTransformMakeDefault();
+    res.item = this.item._copyFromDartTo_CSimpleMapObject();
+    res.position = this.position._copyFromDartTo_CGeoPointWithElevation();
+    return res;
+  }
+}
+extension _CMapObjectTransformRelease on _CMapObjectTransform {
+  void _releaseIntermediate() {
+    item._releaseIntermediate();
+  }
+}
+
+// MARK: - _MapObjectPreRenderProcessorCpp
+
+/** Обработчик объектов перед отображением кадра. */
+class _MapObjectPreRenderProcessorCpp extends MapObjectPreRenderProcessor implements ffi.Finalizable {
+  final ffi.Pointer<ffi.Void> _self;
+
+  static final _finalizer = ffi.NativeFinalizer(_CMapObjectPreRenderProcessorCpp_finalizePtr);
+
+  _MapObjectPreRenderProcessorCpp._raw(this._self);
+  factory _MapObjectPreRenderProcessorCpp._create(ffi.Pointer<ffi.Void> self) {
+    final classObject = _MapObjectPreRenderProcessorCpp._raw(self);
+    _finalizer.attach(classObject, self, detach: classObject, externalSize: 10000);
+    return classObject;
+  }
+
+  factory _MapObjectPreRenderProcessorCpp.fromMessage(ClassMessage<_MapObjectPreRenderProcessorCpp> message) {
+    final ptr = ffi.Pointer<ffi.Void>.fromAddress(message.address);
+    return _MapObjectPreRenderProcessorCpp._create(ptr);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) || other is _MapObjectPreRenderProcessorCpp &&
+    other.runtimeType == runtimeType &&
+    _CMapObjectPreRenderProcessorCpp_cg_objectIdentifier(this._self) == _CMapObjectPreRenderProcessorCpp_cg_objectIdentifier(other._self);
+
+  @override
+  int get hashCode {
+    final identifier = _CMapObjectPreRenderProcessorCpp_cg_objectIdentifier(this._self);
+    return identifier.hashCode;
+  }
+
+  // MARK: _MapObjectPreRenderProcessorCpp: Methods
+
+  /**
+   Вычислить полный набор временных перемещений объектов для текущего кадра.
+  
+   Камера — независимый снимок финального состояния камеры кадра. Его изменение
+   не влияет на камеру карты и на снимки, переданные другим обработчикам.
+   Объекты, отсутствующие в результате, возвращаются к положению из геометрии.
+  
+   Обработчик выполняется синхронно, поэтому не должен
+   обращаться к UI или выполнять длительную и асинхронную работу.
+  */
+  List<MapObjectTransform> transforms(
+    List<SimpleMapObject> objects,
+    BaseCamera camera
+  )  {
+    var _a1 = objects._copyFromDartTo_CArray_CSimpleMapObject();
+    var _a2 = camera._copyFromDartTo_CBaseCamera();
+    _CArray_CMapObjectTransform res = _CMapObjectPreRenderProcessorCpp_transforms_CArray_CSimpleMapObject_CBaseCamera(_CMapObjectPreRenderProcessorCppMakeDefault().._impl=_self, _a1, _a2);
+    _a2._releaseIntermediate();
+    _a1._releaseIntermediate();
+    final t = res._toDart();
+    res._releaseIntermediate();
+    return t;
+  }
+
+}
+
+extension _MapObjectPreRenderProcessorCppToClassMessage on _MapObjectPreRenderProcessorCpp {
+  ClassMessage<_MapObjectPreRenderProcessorCpp> message() {
+    final res = (_CMapObjectPreRenderProcessorCppMakeDefault().._impl=_self)._retain();
+    return ClassMessage<_MapObjectPreRenderProcessorCpp>(res._impl.address, _CMapObjectPreRenderProcessorCpp_release);
+  }
+}
+
+// MARK: - _MapObjectPreRenderProcessorCpp <-> CMapObjectPreRenderProcessorCpp
+
+final class _CMapObjectPreRenderProcessorCpp extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> _impl;
+}
+
+extension _CMapObjectPreRenderProcessorCppBasicFunctions on _CMapObjectPreRenderProcessorCpp {
+  void _releaseIntermediate() {
+    _CMapObjectPreRenderProcessorCpp_release(_impl);
+  }
+
+  _CMapObjectPreRenderProcessorCpp _retain() {
+    return _CMapObjectPreRenderProcessorCpp_retain(_impl);
+  }
+}
+
+extension _CMapObjectPreRenderProcessorCppToDart on _CMapObjectPreRenderProcessorCpp {
+  _MapObjectPreRenderProcessorCpp _toDart() {
+    return _MapObjectPreRenderProcessorCpp._create(_retain()._impl);
+  }
+}
+
+
+extension _DartToCMapObjectPreRenderProcessorCpp on _MapObjectPreRenderProcessorCpp {
+  _CMapObjectPreRenderProcessorCpp _copyFromDartTo_CMapObjectPreRenderProcessorCpp() {
+    return (_CMapObjectPreRenderProcessorCppMakeDefault().._impl=_self)._retain();
+  }
+}
+// MARK: - List<MapObjectTransform> <-> _CArray_CMapObjectTransform
+
+final class _CArray_CMapObjectTransform extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> _impl;
+}
+
+extension _CArray_CMapObjectTransformToDart on _CArray_CMapObjectTransform {
+  List<MapObjectTransform> _toDart() {
+    return _fillFromC();
+  }
+}
+
+extension _DartTo_CArray_CMapObjectTransform on List<MapObjectTransform> {
+  _CArray_CMapObjectTransform _copyFromDartTo_CArray_CMapObjectTransform() {
+    final cArray = _CArray_CMapObjectTransformmakeEmpty();
+    forEach((item) {
+        final cItem = item._copyFromDartTo_CMapObjectTransform();
+        _CArray_CMapObjectTransformaddElement(cArray, cItem);
+        cItem._releaseIntermediate();
+    });
+    return cArray;
+  }
+}
+
+extension _CArray_CMapObjectTransformBasicFunctions on _CArray_CMapObjectTransform {
+  void _releaseIntermediate() {
+    _CArray_CMapObjectTransform_release(this);
+  }
+
+  static final _listToFill = <MapObjectTransform>[];
+
+  static void _iterate(_CMapObjectTransform item) {
+    _listToFill.add(item._toDart());
+  }
+
+  List<MapObjectTransform> _fillFromC() {
+    _forEach_CArray_CMapObjectTransform(this, ffi.Pointer.fromFunction<ffi.Void Function(_CMapObjectTransform)>(_iterate));
+    final result = List<MapObjectTransform>.from(_listToFill);
+    _listToFill.clear();
+    return result;
+  }
+}
+	
+// MARK: - MapObjectPreRenderProcessor
+
+/** Обработчик объектов перед отображением кадра. */
+abstract class MapObjectPreRenderProcessor {
+  List<MapObjectTransform> transforms(
+    List<SimpleMapObject> objects,
+    BaseCamera camera
+  );
+}
+
+class _MapObjectPreRenderProcessor {
+  final MapObjectPreRenderProcessor object;
+  final _NativeCallbackPort callbackPort;
+
+  _MapObjectPreRenderProcessor(this.object, this.callbackPort);
+}
+
+final class _CMapObjectPreRenderProcessor extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> _value;
+  external ffi.Pointer<ffi.Void> _cppValue;
+  external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
+  external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
+
+  external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CMapObjectTransform)>>, _CArray_CSimpleMapObject, _CBaseCamera)>> _transforms_CArray_CSimpleMapObject_CBaseCamera;
+}
+
+extension _CMapObjectPreRenderProcessorBasicFunctions on _CMapObjectPreRenderProcessor {
+  void _releaseIntermediate() {
+    _CMapObjectPreRenderProcessor_release(this);
+  }
+}
+
+int _CMapObjectPreRenderProcessorInstanceCounter = 1;
+final _CMapObjectPreRenderProcessorInstanceMap = <int, _MapObjectPreRenderProcessor>{};
+
+extension _CMapObjectPreRenderProcessorToDart on _CMapObjectPreRenderProcessor {
+  MapObjectPreRenderProcessor _toDart() {
+    late MapObjectPreRenderProcessor? result;
+    final platformValue = this._value.cast<ffi.Int64>();
+    if (platformValue.address != 0) {
+      result = _CMapObjectPreRenderProcessorInstanceMap[platformValue.address]?.object;
+    } else if (this._cppValue.address != 0) {
+      final cppValue = _CMapObjectPreRenderProcessorCppMakeDefault().._impl = this._cppValue;
+      result = cppValue._toDart();
+    }
+    if (result == null) {
+      throw Exception("Invalid intermediate object of type _CMapObjectPreRenderProcessor");
+    }
+    return result;
+  }
+}
+
+extension _DartTo_CMapObjectPreRenderProcessor on MapObjectPreRenderProcessor {
+  _CMapObjectPreRenderProcessor _copyFromDartTo_CMapObjectPreRenderProcessor() {
+    var res = _CMapObjectPreRenderProcessorMakeDefault();
+    if (this is _MapObjectPreRenderProcessorCpp) {
+      final cppValue = this as _MapObjectPreRenderProcessorCpp;
+      res._cppValue = cppValue._copyFromDartTo_CMapObjectPreRenderProcessorCpp()._impl;
+      return res;
+    }
+    final instanceId = _CMapObjectPreRenderProcessorInstanceCounter;
+    _CMapObjectPreRenderProcessorInstanceCounter += 1;
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CMapObjectPreRenderProcessorInstanceMap[instanceId] = _MapObjectPreRenderProcessor(this, callbackPort);
+    res._dartPort = callbackPort.portId;
+    res._value = ffi.Pointer.fromAddress(instanceId);
+
+    final transforms_CArray_CSimpleMapObject_CBaseCameraFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CMapObjectTransform)>>, _CArray_CSimpleMapObject, _CBaseCamera)>.isolateLocal(transforms_CArray_CSimpleMapObject_CBaseCameraFunction);
+    res._transforms_CArray_CSimpleMapObject_CBaseCamera = transforms_CArray_CSimpleMapObject_CBaseCameraFunctionCallable.nativeFunction;
+    return res;
+  }
+
+  static void transforms_CArray_CSimpleMapObject_CBaseCameraFunction(ffi.Pointer<ffi.Void> value, ffi.Pointer<ffi.Void> context, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CMapObjectTransform)>> resultValueCallback, _CArray_CSimpleMapObject objects, _CBaseCamera camera) {
+    final platformValue = value.cast<ffi.Int64>();
+    if (platformValue.address == 0) {
+      throw Exception("Invalid object of type _CMapObjectPreRenderProcessor");
+    }
+    final platformObject = _CMapObjectPreRenderProcessorInstanceMap[platformValue.address];
+    if (platformObject == null) {
+      throw Exception("Invalid object of type _CMapObjectPreRenderProcessor");
+    }
+
+    final objectsDart = objects._toDart();
+    final cameraDart = camera._toDart();
+    final res = platformObject.object.transforms(objectsDart, cameraDart);
+    objects._releaseIntermediate();
+    camera._releaseIntermediate();
+    final callbackFunction = resultValueCallback.asFunction<void Function(ffi.Pointer<ffi.Void>, _CArray_CMapObjectTransform)>();
+    callbackFunction(context, res._copyFromDartTo_CArray_CMapObjectTransform());
+  }
+
+
+}
+
 // MARK: - MapObjectManager
 
 class MapObjectManager implements ffi.Finalizable {
@@ -41664,7 +41810,7 @@ class MapObjectManager implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapObjectManager_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapObjectManager_finalizePtr);
 
   MapObjectManager._raw(this._self);
   factory MapObjectManager._create(ffi.Pointer<ffi.Void> self) {
@@ -41854,6 +42000,21 @@ class MapObjectManager implements ffi.Finalizable {
     return t;
   }
 
+  /**
+   Установка обработчика объектов перед отображением кадра.
+  
+   Передача пустого указателя отключает обработку и возвращает
+   все объекты к положению из их геометрии.
+  */
+  void setPreRenderProcessor(
+    MapObjectPreRenderProcessor? processor
+  )  {
+    var _a1 = processor._copyFromDartTo_COptional_CMapObjectPreRenderProcessor();
+    void res = _CMapObjectManager_setPreRenderProcessor_COptional_CMapObjectPreRenderProcessor(_CMapObjectManagerMakeDefault().._impl=_self, _a1);
+    _a1._releaseIntermediate();
+    return res;
+  }
+
 }
 
 extension MapObjectManagerToClassMessage on MapObjectManager {
@@ -41891,13 +42052,49 @@ extension _DartToCMapObjectManager on MapObjectManager {
     return (_CMapObjectManagerMakeDefault().._impl=_self)._retain();
   }
 }
+// MARK: - MapObjectPreRenderProcessor? <-> _COptional_CMapObjectPreRenderProcessor
+
+final class _COptional_CMapObjectPreRenderProcessor extends ffi.Struct {
+  
+  external _CMapObjectPreRenderProcessor value;
+  @ffi.Bool()
+  external bool hasValue;
+}
+
+extension _COptional_CMapObjectPreRenderProcessorBasicFunctions on _COptional_CMapObjectPreRenderProcessor {
+  void _releaseIntermediate() {
+    _COptional_CMapObjectPreRenderProcessor_release(this);
+  }
+}
+
+extension _COptional_CMapObjectPreRenderProcessorToDart on _COptional_CMapObjectPreRenderProcessor {
+  MapObjectPreRenderProcessor? _toDart() {
+    if (!this.hasValue) {
+      return null;
+    }
+    return this.value._toDart();
+  }
+}
+
+extension _DartTo_COptional_CMapObjectPreRenderProcessor on MapObjectPreRenderProcessor? {
+  _COptional_CMapObjectPreRenderProcessor _copyFromDartTo_COptional_CMapObjectPreRenderProcessor() {
+    final cOptional = _COptional_CMapObjectPreRenderProcessorMakeDefault();
+    if (this != null) {
+      cOptional.value = this!._copyFromDartTo_CMapObjectPreRenderProcessor();
+      cOptional.hasValue = true;
+    } else {
+      cOptional.hasValue = false;
+    }
+    return cOptional;
+  }
+}
 // MARK: - _SimpleClusterRendererCpp
 
 /** Класс для кастомизации внешнего вида кластера в IMapObjectManager. */
 class _SimpleClusterRendererCpp extends SimpleClusterRenderer implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CSimpleClusterRendererCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSimpleClusterRendererCpp_finalizePtr);
 
   _SimpleClusterRendererCpp._raw(this._self);
   factory _SimpleClusterRendererCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -42378,7 +42575,7 @@ class SimpleClusterObject extends MapObject implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CSimpleClusterObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CSimpleClusterObject_finalizePtr);
 
   SimpleClusterObject._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory SimpleClusterObject._create(ffi.Pointer<ffi.Void> self) {
@@ -42464,9 +42661,9 @@ abstract class SimpleClusterRenderer {
 
 class _SimpleClusterRenderer {
   final SimpleClusterRenderer object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _SimpleClusterRenderer(this.object);
+  _SimpleClusterRenderer(this.object, this.callbackPort);
 }
 
 final class _CSimpleClusterRenderer extends ffi.Struct {
@@ -42474,6 +42671,8 @@ final class _CSimpleClusterRenderer extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CSimpleClusterOptions)>>, _CSimpleClusterObject)>> _renderCluster_CSimpleClusterObject;
 }
@@ -42505,30 +42704,6 @@ extension _CSimpleClusterRendererToDart on _CSimpleClusterRenderer {
 }
 
 extension _DartTo_CSimpleClusterRenderer on SimpleClusterRenderer {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CSimpleClusterRendererInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CSimpleClusterRendererInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CSimpleClusterRendererInstanceMap.remove(platformValue.address);
-  }
-
   _CSimpleClusterRenderer _copyFromDartTo_CSimpleClusterRenderer() {
     var res = _CSimpleClusterRendererMakeDefault();
     if (this is _SimpleClusterRendererCpp) {
@@ -42538,14 +42713,14 @@ extension _DartTo_CSimpleClusterRenderer on SimpleClusterRenderer {
     }
     final instanceId = _CSimpleClusterRendererInstanceCounter;
     _CSimpleClusterRendererInstanceCounter += 1;
-    _CSimpleClusterRendererInstanceMap[instanceId] = _SimpleClusterRenderer(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CSimpleClusterRendererInstanceMap[instanceId] = _SimpleClusterRenderer(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final renderCluster_CSimpleClusterObjectFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CSimpleClusterOptions)>>, _CSimpleClusterObject)>.listener(renderCluster_CSimpleClusterObjectFunction);
+    final renderCluster_CSimpleClusterObjectFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CSimpleClusterOptions)>>, _CSimpleClusterObject)>.isolateLocal(renderCluster_CSimpleClusterObjectFunction);
     res._renderCluster_CSimpleClusterObject = renderCluster_CSimpleClusterObjectFunctionCallable.nativeFunction;
     return res;
   }
@@ -42711,7 +42886,7 @@ class Marker extends SimpleMapObject implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMarker_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMarker_finalizePtr);
 
   Marker._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory Marker._create(ffi.Pointer<ffi.Void> self) {
@@ -43321,7 +43496,7 @@ class ModelMapObject extends SimpleMapObject implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CModelMapObject_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CModelMapObject_finalizePtr);
 
   ModelMapObject._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory ModelMapObject._create(ffi.Pointer<ffi.Void> self) {
@@ -43567,7 +43742,7 @@ class Circle extends SimpleMapObject implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCircle_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCircle_finalizePtr);
 
   Circle._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory Circle._create(ffi.Pointer<ffi.Void> self) {
@@ -43994,7 +44169,7 @@ class Polygon extends SimpleMapObject implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPolygon_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPolygon_finalizePtr);
 
   Polygon._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory Polygon._create(ffi.Pointer<ffi.Void> self) {
@@ -44601,7 +44776,7 @@ class Polyline extends SimpleMapObject implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPolyline_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPolyline_finalizePtr);
 
   Polyline._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory Polyline._create(ffi.Pointer<ffi.Void> self) {
@@ -45090,7 +45265,7 @@ class MyLocationControlModel implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMyLocationControlModel_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMyLocationControlModel_finalizePtr);
 
   MyLocationControlModel._raw(this._self);
   factory MyLocationControlModel._create(ffi.Pointer<ffi.Void> self) {
@@ -45197,13 +45372,14 @@ class _CStatefulChannel_CCameraFollowStateImpl extends StatefulChannel<CameraFol
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CCameraFollowState, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CCameraFollowState, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<CameraFollowState>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -45213,8 +45389,8 @@ class _CStatefulChannel_CCameraFollowStateImpl extends StatefulChannel<CameraFol
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -45246,8 +45422,10 @@ extension _CStatefulChannel_CCameraFollowStateBasicFunctions on _CStatefulChanne
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CCameraFollowState, ffi.Int64)> callback) {
-    return _CStatefulChannel_CCameraFollowStateConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CCameraFollowState, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CCameraFollowStateConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -45291,13 +45469,14 @@ class _CStatefulChannel_CLocationQualityImpl extends StatefulChannel<LocationQua
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CLocationQuality, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CLocationQuality, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<LocationQuality>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -45307,8 +45486,8 @@ class _CStatefulChannel_CLocationQualityImpl extends StatefulChannel<LocationQua
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -45340,8 +45519,10 @@ extension _CStatefulChannel_CLocationQualityBasicFunctions on _CStatefulChannel_
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CLocationQuality, ffi.Int64)> callback) {
-    return _CStatefulChannel_CLocationQualityConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CLocationQuality, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CLocationQualityConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -45380,7 +45561,7 @@ class CompassControlModel implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCompassControlModel_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCompassControlModel_finalizePtr);
 
   CompassControlModel._raw(this._self);
   factory CompassControlModel._create(ffi.Pointer<ffi.Void> self) {
@@ -45487,13 +45668,14 @@ class _CStatefulChannel_CBearingImpl extends StatefulChannel<Bearing> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CBearing, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CBearing, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<Bearing>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -45503,8 +45685,8 @@ class _CStatefulChannel_CBearingImpl extends StatefulChannel<Bearing> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -45536,8 +45718,10 @@ extension _CStatefulChannel_CBearingBasicFunctions on _CStatefulChannel_CBearing
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CBearing, ffi.Int64)> callback) {
-    return _CStatefulChannel_CBearingConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CBearing, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CBearingConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -45602,7 +45786,7 @@ extension _DartTo_CZoomControlButton on ZoomControlButton {
 class ZoomControlModel implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CZoomControlModel_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CZoomControlModel_finalizePtr);
 
   ZoomControlModel._raw(this._self);
   factory ZoomControlModel._create(ffi.Pointer<ffi.Void> self) {
@@ -45892,7 +46076,7 @@ extension _DartTo_CRasterUrlTemplate on RasterUrlTemplate {
 
 /** Источник, получающий растровые тайлы. */
 class RasterTileSource extends Source implements ffi.Finalizable {
-  static final _finalizer = ffi.NativeFinalizer(_CRasterTileSource_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRasterTileSource_finalizePtr);
 
   RasterTileSource._raw(ffi.Pointer<ffi.Void> p) : super._raw(p);
   factory RasterTileSource._create(ffi.Pointer<ffi.Void> self) {
@@ -46020,7 +46204,7 @@ class ParkingControlModel implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CParkingControlModel_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CParkingControlModel_finalizePtr);
 
   ParkingControlModel._raw(this._self);
   factory ParkingControlModel._create(ffi.Pointer<ffi.Void> self) {
@@ -46145,7 +46329,7 @@ class PackedMapState implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CPackedMapState_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPackedMapState_finalizePtr);
 
   PackedMapState._raw(this._self);
   factory PackedMapState._create(ffi.Pointer<ffi.Void> self) {
@@ -46854,7 +47038,7 @@ class MapRenderer implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapRenderer_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapRenderer_finalizePtr);
 
   MapRenderer._raw(this._self);
   factory MapRenderer._create(ffi.Pointer<ffi.Void> self) {
@@ -47001,13 +47185,14 @@ class _CStatefulChannel_CFpsImpl extends StatefulChannel<Fps> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CFps, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CFps, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<Fps>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -47017,8 +47202,8 @@ class _CStatefulChannel_CFpsImpl extends StatefulChannel<Fps> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -47050,8 +47235,10 @@ extension _CStatefulChannel_CFpsBasicFunctions on _CStatefulChannel_CFps {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CFps, ffi.Int64)> callback) {
-    return _CStatefulChannel_CFpsConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CFps, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CFpsConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -47075,16 +47262,14 @@ final class _CFuture_bool extends ffi.Struct {
 
 class _CFuture_bool_Cancellable {
   final Completer<bool> completer;
-  final _CFuture_bool _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_bool_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -47094,8 +47279,7 @@ class _CFuture_bool_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -47140,23 +47324,26 @@ extension _CFuture_boolToDart on _CFuture_bool {
   }
 
   CancelableOperation<bool> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<bool>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_boolReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_bool_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -47185,16 +47372,14 @@ final class _CFuture_CImageData extends ffi.Struct {
 
 class _CFuture_CImageData_Cancellable {
   final Completer<ImageData> completer;
-  final _CFuture_CImageData _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CImageData, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CImageData_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -47204,8 +47389,7 @@ class _CFuture_CImageData_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -47250,23 +47434,26 @@ extension _CFuture_CImageDataToDart on _CFuture_CImageData {
   }
 
   CancelableOperation<ImageData> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<ImageData>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CImageData, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CImageData, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CImageDataReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CImageData_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -47923,7 +48110,7 @@ class ScalingGestureSettings implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CScalingGestureSettings_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CScalingGestureSettings_finalizePtr);
 
   ScalingGestureSettings._raw(this._self);
   factory ScalingGestureSettings._create(ffi.Pointer<ffi.Void> self) {
@@ -48266,7 +48453,7 @@ class RotationGestureSettings implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CRotationGestureSettings_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRotationGestureSettings_finalizePtr);
 
   RotationGestureSettings._raw(this._self);
   factory RotationGestureSettings._create(ffi.Pointer<ffi.Void> self) {
@@ -48404,7 +48591,7 @@ class MultiTouchGestureSettings implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMultiTouchGestureSettings_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMultiTouchGestureSettings_finalizePtr);
 
   MultiTouchGestureSettings._raw(this._self);
   factory MultiTouchGestureSettings._create(ffi.Pointer<ffi.Void> self) {
@@ -48737,7 +48924,7 @@ class TiltGestureSettings implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CTiltGestureSettings_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CTiltGestureSettings_finalizePtr);
 
   TiltGestureSettings._raw(this._self);
   factory TiltGestureSettings._create(ffi.Pointer<ffi.Void> self) {
@@ -48873,7 +49060,7 @@ class CommonGestureSettings implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CCommonGestureSettings_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CCommonGestureSettings_finalizePtr);
 
   CommonGestureSettings._raw(this._self);
   factory CommonGestureSettings._create(ffi.Pointer<ffi.Void> self) {
@@ -48982,7 +49169,7 @@ class GestureManager implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CGestureManager_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CGestureManager_finalizePtr);
 
   GestureManager._raw(this._self);
   factory GestureManager._create(ffi.Pointer<ffi.Void> self) {
@@ -49366,7 +49553,7 @@ class MapGestureRecognizer implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapGestureRecognizer_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapGestureRecognizer_finalizePtr);
 
   MapGestureRecognizer._raw(this._self);
   factory MapGestureRecognizer._create(ffi.Pointer<ffi.Void> self) {
@@ -49508,13 +49695,14 @@ class _CChannel_CDragBeginDataImpl extends Channel<DragBeginData> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CDragBeginData, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CDragBeginData, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<DragBeginData>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -49524,8 +49712,8 @@ class _CChannel_CDragBeginDataImpl extends Channel<DragBeginData> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -49550,8 +49738,10 @@ extension _CChannel_CDragBeginDataBasicFunctions on _CChannel_CDragBeginData {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CDragBeginData, ffi.Int64)> callback) {
-    return _CChannel_CDragBeginDataConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CDragBeginData, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CChannel_CDragBeginDataConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -49590,13 +49780,14 @@ class _CChannel_CScreenPointImpl extends Channel<ScreenPoint> {
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CScreenPoint, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CScreenPoint, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<ScreenPoint>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -49606,8 +49797,8 @@ class _CChannel_CScreenPointImpl extends Channel<ScreenPoint> {
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -49632,8 +49823,10 @@ extension _CChannel_CScreenPointBasicFunctions on _CChannel_CScreenPoint {
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CScreenPoint, ffi.Int64)> callback) {
-    return _CChannel_CScreenPointConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CScreenPoint, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CChannel_CScreenPointConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -49717,7 +49910,7 @@ class MapRenderedObjectObserver implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapRenderedObjectObserver_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapRenderedObjectObserver_finalizePtr);
 
   MapRenderedObjectObserver._raw(this._self);
   factory MapRenderedObjectObserver._create(ffi.Pointer<ffi.Void> self) {
@@ -49827,13 +50020,14 @@ class _CChannel_CArray_CRenderedObjectInfoImpl extends Channel<List<RenderedObje
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<List<RenderedObjectInfo>>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -49843,8 +50037,8 @@ class _CChannel_CArray_CRenderedObjectInfoImpl extends Channel<List<RenderedObje
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -49869,8 +50063,10 @@ extension _CChannel_CArray_CRenderedObjectInfoBasicFunctions on _CChannel_CArray
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)> callback) {
-    return _CChannel_CArray_CRenderedObjectInfoConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CChannel_CArray_CRenderedObjectInfoConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -49921,7 +50117,7 @@ class MapController implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapController_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapController_finalizePtr);
 
   MapController._raw(this._self);
   factory MapController._create(ffi.Pointer<ffi.Void> self) {
@@ -50015,16 +50211,14 @@ final class _CFuture_CMapController extends ffi.Struct {
 
 class _CFuture_CMapController_Cancellable {
   final Completer<MapController> completer;
-  final _CFuture_CMapController _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CMapController, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CMapController_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -50034,8 +50228,7 @@ class _CFuture_CMapController_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -50080,23 +50273,26 @@ extension _CFuture_CMapControllerToDart on _CFuture_CMapController {
   }
 
   CancelableOperation<MapController> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<MapController>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMapController, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMapController, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CMapControllerReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CMapController_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -50134,7 +50330,7 @@ extension _DartTo_CFuture_CMapController on CancelableOperation<MapController> {
 class MapControllerRegistry implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapControllerRegistry_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapControllerRegistry_finalizePtr);
 
   MapControllerRegistry._raw(this._self);
   factory MapControllerRegistry._create(ffi.Pointer<ffi.Void> self) {
@@ -50278,7 +50474,7 @@ class MapSurfaceProvider implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapSurfaceProvider_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapSurfaceProvider_finalizePtr);
 
   MapSurfaceProvider._raw(this._self);
   factory MapSurfaceProvider._create(ffi.Pointer<ffi.Void> self) {
@@ -50411,7 +50607,7 @@ extension _DartToCMapSurfaceProvider on MapSurfaceProvider {
 class MapBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CMapBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CMapBuilder_finalizePtr);
 
   MapBuilder._raw(this._self);
   factory MapBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -50740,16 +50936,14 @@ final class _CFuture_CMap extends ffi.Struct {
 
 class _CFuture_CMap_Cancellable {
   final Completer<Map> completer;
-  final _CFuture_CMap _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CMap, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CMap_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -50759,8 +50953,7 @@ class _CFuture_CMap_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -50805,23 +50998,26 @@ extension _CFuture_CMapToDart on _CFuture_CMap {
   }
 
   CancelableOperation<Map> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<Map>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMap, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CMap, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CMapReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CMap_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -50848,7 +51044,7 @@ extension _DartTo_CFuture_CMap on CancelableOperation<Map> {
 class StyleBuilder implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CStyleBuilder_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CStyleBuilder_finalizePtr);
 
   StyleBuilder._raw(this._self);
   factory StyleBuilder._create(ffi.Pointer<ffi.Void> self) {
@@ -50964,16 +51160,14 @@ final class _CFuture_CStyle extends ffi.Struct {
 
 class _CFuture_CStyle_Cancellable {
   final Completer<Style> completer;
-  final _CFuture_CStyle _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CStyle, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CStyle_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -50983,8 +51177,7 @@ class _CFuture_CStyle_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -51029,23 +51222,26 @@ extension _CFuture_CStyleToDart on _CFuture_CStyle {
   }
 
   CancelableOperation<Style> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<Style>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CStyle, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CStyle, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CStyleReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CStyle_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -51145,7 +51341,7 @@ class HttpCacheManager implements ffi.Finalizable {
     return res;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CHttpCacheManager_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CHttpCacheManager_finalizePtr);
 
   HttpCacheManager._raw(this._self);
   factory HttpCacheManager._create(ffi.Pointer<ffi.Void> self) {
@@ -51272,7 +51468,7 @@ extension _DartTo_COptional_CHttpCacheManager on HttpCacheManager? {
 class LocaleChangeNotifier implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CLocaleChangeNotifier_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CLocaleChangeNotifier_finalizePtr);
 
   LocaleChangeNotifier._raw(this._self);
   factory LocaleChangeNotifier._create(ffi.Pointer<ffi.Void> self) {
@@ -51434,7 +51630,7 @@ class LocaleManager implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CLocaleManager_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CLocaleManager_finalizePtr);
 
   LocaleManager._raw(this._self);
   factory LocaleManager._create(ffi.Pointer<ffi.Void> self) {
@@ -51551,13 +51747,14 @@ class _CStatefulChannel_CArray_CLocaleImpl extends StatefulChannel<List<Locale>>
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CLocale, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CArray_CLocale, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<List<Locale>>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -51567,8 +51764,8 @@ class _CStatefulChannel_CArray_CLocaleImpl extends StatefulChannel<List<Locale>>
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -51600,8 +51797,10 @@ extension _CStatefulChannel_CArray_CLocaleBasicFunctions on _CStatefulChannel_CA
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CArray_CLocale, ffi.Int64)> callback) {
-    return _CStatefulChannel_CArray_CLocaleConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CArray_CLocale, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CArray_CLocaleConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -51623,7 +51822,7 @@ extension _DartTo_CStatefulChannel_CArray_CLocale on StatefulChannel<List<Locale
 class _PlatformLocaleManagerCpp extends PlatformLocaleManager implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CPlatformLocaleManagerCpp_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CPlatformLocaleManagerCpp_finalizePtr);
 
   _PlatformLocaleManagerCpp._raw(this._self);
   factory _PlatformLocaleManagerCpp._create(ffi.Pointer<ffi.Void> self) {
@@ -51749,9 +51948,9 @@ abstract class PlatformLocaleManager {
 
 class _PlatformLocaleManager {
   final PlatformLocaleManager object;
-  int refCounter = 1;
+  final _NativeCallbackPort callbackPort;
 
-  _PlatformLocaleManager(this.object);
+  _PlatformLocaleManager(this.object, this.callbackPort);
 }
 
 final class _CPlatformLocaleManager extends ffi.Struct {
@@ -51759,6 +51958,8 @@ final class _CPlatformLocaleManager extends ffi.Struct {
   external ffi.Pointer<ffi.Void> _cppValue;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _retain;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>> _release;
+  @ffi.Int64()
+  external int _dartPort;
 
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CLocale)>>)>> _locales;
   external ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLocaleChangeNotifier)>> _setLocalesChangeNotifier_CLocaleChangeNotifier;
@@ -51794,30 +51995,6 @@ extension _CPlatformLocaleManagerToDart on _CPlatformLocaleManager {
 }
 
 extension _DartTo_CPlatformLocaleManager on PlatformLocaleManager {
-  static void retainFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    _CPlatformLocaleManagerInstanceMap[platformValue.address]?.refCounter += 1;
-  }
-
-  static void releaseFunction(ffi.Pointer<ffi.Void> value) {
-    final platformValue = value.cast<ffi.Int64>();
-    if (platformValue.address == 0) {
-      return;
-    }
-    final platformObject = _CPlatformLocaleManagerInstanceMap[platformValue.address];
-    if (platformObject == null) {
-      return;
-    }
-    platformObject.refCounter -= 1;
-    if (platformObject.refCounter > 0) {
-      return;
-    }
-    _CPlatformLocaleManagerInstanceMap.remove(platformValue.address);
-  }
-
   _CPlatformLocaleManager _copyFromDartTo_CPlatformLocaleManager() {
     var res = _CPlatformLocaleManagerMakeDefault();
     if (this is _PlatformLocaleManagerCpp) {
@@ -51827,22 +52004,22 @@ extension _DartTo_CPlatformLocaleManager on PlatformLocaleManager {
     }
     final instanceId = _CPlatformLocaleManagerInstanceCounter;
     _CPlatformLocaleManagerInstanceCounter += 1;
-    _CPlatformLocaleManagerInstanceMap[instanceId] = _PlatformLocaleManager(this);
+    // The registry roots the Dart implementation for this isolate. Native
+    // retain/release hooks must not call back into a possibly deleted isolate.
+    final callbackPort = _NativeCallbackPort.protocol();
+    _CPlatformLocaleManagerInstanceMap[instanceId] = _PlatformLocaleManager(this, callbackPort);
+    res._dartPort = callbackPort.portId;
     res._value = ffi.Pointer.fromAddress(instanceId);
-    final retainFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(retainFunction);
-    //final releaseFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>)>.listener(releaseFunction);
-    res._retain = retainFunctionCallable.nativeFunction;
-    //res._release = releaseFunctionCallable.nativeFunction;
 
-    final localesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CLocale)>>)>.listener(localesFunction);
+    final localesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CLocale)>>)>.isolateLocal(localesFunction);
     res._locales = localesFunctionCallable.nativeFunction;
-    final setLocalesChangeNotifier_CLocaleChangeNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLocaleChangeNotifier)>.listener(setLocalesChangeNotifier_CLocaleChangeNotifierFunction);
+    final setLocalesChangeNotifier_CLocaleChangeNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLocaleChangeNotifier)>.isolateLocal(setLocalesChangeNotifier_CLocaleChangeNotifierFunction);
     res._setLocalesChangeNotifier_CLocaleChangeNotifier = setLocalesChangeNotifier_CLocaleChangeNotifierFunctionCallable.nativeFunction;
-    final systemLocalesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CLocale)>>)>.listener(systemLocalesFunction);
+    final systemLocalesFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, _CArray_CLocale)>>)>.isolateLocal(systemLocalesFunction);
     res._systemLocales = systemLocalesFunctionCallable.nativeFunction;
-    final setSystemLocalesChangeNotifier_CLocaleChangeNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLocaleChangeNotifier)>.listener(setSystemLocalesChangeNotifier_CLocaleChangeNotifierFunction);
+    final setSystemLocalesChangeNotifier_CLocaleChangeNotifierFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CLocaleChangeNotifier)>.isolateLocal(setSystemLocalesChangeNotifier_CLocaleChangeNotifierFunction);
     res._setSystemLocalesChangeNotifier_CLocaleChangeNotifier = setSystemLocalesChangeNotifier_CLocaleChangeNotifierFunctionCallable.nativeFunction;
-    final overrideLocales_CArray_CLocaleFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CArray_CLocale)>.listener(overrideLocales_CArray_CLocaleFunction);
+    final overrideLocales_CArray_CLocaleFunctionCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>, _CArray_CLocale)>.isolateLocal(overrideLocales_CArray_CLocaleFunction);
     res._overrideLocales_CArray_CLocale = overrideLocales_CArray_CLocaleFunctionCallable.nativeFunction;
     return res;
   }
@@ -51991,7 +52168,7 @@ class LocationService implements ffi.Finalizable {
     return t;
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CLocationService_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CLocationService_finalizePtr);
 
   LocationService._raw(this._self);
   factory LocationService._create(ffi.Pointer<ffi.Void> self) {
@@ -52114,13 +52291,14 @@ class _CStatefulChannel_COptional_CLocationImpl extends StatefulChannel<Location
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CLocation, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_COptional_CLocation, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<Location?>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -52130,8 +52308,8 @@ class _CStatefulChannel_COptional_CLocationImpl extends StatefulChannel<Location
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -52163,8 +52341,10 @@ extension _CStatefulChannel_COptional_CLocationBasicFunctions on _CStatefulChann
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_COptional_CLocation, ffi.Int64)> callback) {
-    return _CStatefulChannel_COptional_CLocationConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_COptional_CLocation, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_COptional_CLocationConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -52330,7 +52510,7 @@ extension _DartTo_CAddEventResult on AddEventResult {
 class RoadEventManager implements ffi.Finalizable {
   final ffi.Pointer<ffi.Void> _self;
 
-  static final _finalizer = ffi.NativeFinalizer(_CRoadEventManager_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CRoadEventManager_finalizePtr);
 
   RoadEventManager._raw(this._self);
   factory RoadEventManager._create(ffi.Pointer<ffi.Void> self) {
@@ -52540,16 +52720,14 @@ final class _CFuture_CAddEventResult extends ffi.Struct {
 
 class _CFuture_CAddEventResult_Cancellable {
   final Completer<AddEventResult> completer;
-  final _CFuture_CAddEventResult _futureInstance;
-  final _CCancellable _cancellable;
+  final _NativeCallbackPort _callbackPort;
   final ffi.NativeCallable<ffi.Void Function(_CAddEventResult, ffi.Int64)> valueFunctionCallable;
   final ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)> failureCallable;
   bool _isCanceled = false;
 
   _CFuture_CAddEventResult_Cancellable(
     this.completer,
-    this._futureInstance,
-    this._cancellable,
+    this._callbackPort,
     this.valueFunctionCallable,
     this.failureCallable
   );
@@ -52559,8 +52737,7 @@ class _CFuture_CAddEventResult_Cancellable {
       return;
     }
     this._isCanceled = true;
-    this._cancellable._cancel();
-    this._futureInstance._releaseIntermediate();
+    this._callbackPort.cancel();
     final valueCallback = this.valueFunctionCallable;
     final failureCallback = this.failureCallable;
     Timer.run(() {
@@ -52605,23 +52782,26 @@ extension _CFuture_CAddEventResultToDart on _CFuture_CAddEventResult {
   }
 
   CancelableOperation<AddEventResult> _toDart() {
-    final futureInstance = this._retain();
     final instanceId = instanceCounter;
     instanceCounter += 1;
     final completer = new Completer<AddEventResult>();
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CAddEventResult, ffi.Int64)>.listener(valueFunction);
-    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.listener(failure);
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CAddEventResult, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
+    final failureCallable = ffi.NativeCallable<ffi.Void Function(_CError, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(failure));
     final cCancel = _CFuture_CAddEventResultReceive(
-      futureInstance,
+      this,
       instanceId,
       valueFunctionCallable.nativeFunction,
-      failureCallable.nativeFunction
+      failureCallable.nativeFunction,
+      callbackPort.portId,
+      ffi.NativeApi.initializeApiDLData
     );
-    final cancellable = cCancel._retain();
+    callbackPort.attach(cCancel._retain());
     instanceMap[instanceId] = _CFuture_CAddEventResult_Cancellable(
       completer,
-      futureInstance,
-      cancellable,
+      callbackPort,
       valueFunctionCallable,
       failureCallable
     );
@@ -52781,7 +52961,7 @@ class TrafficScoreProvider implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CTrafficScoreProvider_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CTrafficScoreProvider_finalizePtr);
 
   TrafficScoreProvider._raw(this._self);
   factory TrafficScoreProvider._create(ffi.Pointer<ffi.Void> self) {
@@ -52892,13 +53072,14 @@ class _CStatefulChannel_CTrafficScoreImpl extends StatefulChannel<TrafficScore> 
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CTrafficScore, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CTrafficScore, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<TrafficScore>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -52908,8 +53089,8 @@ class _CStatefulChannel_CTrafficScoreImpl extends StatefulChannel<TrafficScore> 
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -52941,8 +53122,10 @@ extension _CStatefulChannel_CTrafficScoreBasicFunctions on _CStatefulChannel_CTr
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CTrafficScore, ffi.Int64)> callback) {
-    return _CStatefulChannel_CTrafficScoreConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CTrafficScore, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CTrafficScoreConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -53110,7 +53293,7 @@ class TrafficControlModel implements ffi.Finalizable {
     return res._toDart();
   }
 
-  static final _finalizer = ffi.NativeFinalizer(_CTrafficControlModel_releasePtr);
+  static final _finalizer = ffi.NativeFinalizer(_CTrafficControlModel_finalizePtr);
 
   TrafficControlModel._raw(this._self);
   factory TrafficControlModel._create(ffi.Pointer<ffi.Void> self) {
@@ -53227,13 +53410,14 @@ class _CStatefulChannel_CTrafficControlStateImpl extends StatefulChannel<Traffic
       {Function? onError, void onDone()?, bool? cancelOnError}) {
     final instanceId = instanceCounter;
     instanceCounter += 1;
-    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CTrafficControlState, ffi.Int64)>.listener(valueFunction);
-    late final _CCancellable cancellable;
+    final callbackPort = _NativeCallbackPort();
+    final valueFunctionCallable = ffi.NativeCallable<ffi.Void Function(_CTrafficControlState, ffi.Int64)>.isolateLocal(
+        Zone.current.bindBinaryCallbackGuarded(valueFunction));
     final streamController = new StreamController<TrafficControlState>(
       onCancel: () {
         instanceMap.remove(instanceId);
         try {
-          cancellable._cancel();
+          callbackPort.cancel();
         } finally {
           final valueCallback = valueFunctionCallable;
           Timer.run(() {
@@ -53243,8 +53427,8 @@ class _CStatefulChannel_CTrafficControlStateImpl extends StatefulChannel<Traffic
       },
     );
     instanceMap[instanceId] = streamController;
-    final cCancel = this._channel._connect(instanceId, valueFunctionCallable);
-    cancellable = cCancel._retain();
+    final cCancel = this._channel._connect(instanceId, valueFunctionCallable, callbackPort);
+    callbackPort.attach(cCancel._retain());
     cCancel._releaseIntermediate();
     return streamController.stream.listen(
       onData,
@@ -53276,8 +53460,10 @@ extension _CStatefulChannel_CTrafficControlStateBasicFunctions on _CStatefulChan
   }
 
   _CCancellable _connect(int instanceId,
-      ffi.NativeCallable<ffi.Void Function(_CTrafficControlState, ffi.Int64)> callback) {
-    return _CStatefulChannel_CTrafficControlStateConnect(this, instanceId, callback.nativeFunction);
+      ffi.NativeCallable<ffi.Void Function(_CTrafficControlState, ffi.Int64)> callback,
+      _NativeCallbackPort callbackPort) {
+    return _CStatefulChannel_CTrafficControlStateConnect(this, instanceId, callback.nativeFunction,
+        callbackPort.portId, ffi.NativeApi.initializeApiDLData);
   }
 }
 
@@ -53300,6 +53486,7 @@ late final _CBssEventsSourceClearGuard_cg_objectIdentifierPtr = _lookup<ffi.Nati
 late final _CBssEventsSourceClearGuard_cg_objectIdentifier = _CBssEventsSourceClearGuard_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CBssEventsSourceClearGuard_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CBssEventsSourceClearGuard_finalize');
 late final _CBssEventsSourceClearGuard_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CBssEventsSourceClearGuard_release');
 late final _CBssEventsSourceClearGuard_release = _CBssEventsSourceClearGuard_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CBssEventsSourceClearGuard_retainPtr = _lookup<ffi.NativeFunction<_CBssEventsSourceClearGuard Function(ffi.Pointer<ffi.Void>)>>('CBssEventsSourceClearGuard_retain');
@@ -53312,6 +53499,7 @@ late final _CContext_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Poi
 late final _CContext_cg_objectIdentifier = _CContext_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CContext_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CContext_finalize');
 late final _CContext_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CContext_release');
 late final _CContext_release = _CContext_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CContext_retainPtr = _lookup<ffi.NativeFunction<_CContext Function(ffi.Pointer<ffi.Void>)>>('CContext_retain');
@@ -53410,6 +53598,7 @@ late final _CLogSinkCpp_cg_objectIdentifier = _CLogSinkCpp_cg_objectIdentifierPt
 late final _CLogSinkCpp_write_CLogMessagePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CLogSinkCpp, _CLogMessage)>>('CLogSinkCpp_write_CLogMessage');
 late final _CLogSinkCpp_write_CLogMessage = _CLogSinkCpp_write_CLogMessagePtr.asFunction<void Function(_CLogSinkCpp, _CLogMessage)>();
 
+late final _CLogSinkCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLogSinkCpp_finalize');
 late final _CLogSinkCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLogSinkCpp_release');
 late final _CLogSinkCpp_release = _CLogSinkCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CLogSinkCpp_retainPtr = _lookup<ffi.NativeFunction<_CLogSinkCpp Function(ffi.Pointer<ffi.Void>)>>('CLogSinkCpp_retain');
@@ -53421,6 +53610,22 @@ late final _CLogSinkCppMakeDefault = _CLogSinkCppMakeDefaultPtr.asFunction<_CLog
 late final _CLogMessageMakeDefaultPtr = _lookup<ffi.NativeFunction<_CLogMessage Function()>>('CLogMessageMakeDefault');
 late final _CLogMessageMakeDefault = _CLogMessageMakeDefaultPtr.asFunction<_CLogMessage Function()>();
 
+
+late final _CCancellableMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCancellable Function()>>('CCancellableMakeDefault');
+late final _CCancellableMakeDefault = _CCancellableMakeDefaultPtr.asFunction<_CCancellable Function()>();
+late final _CCancellable_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CCancellable)>>('CCancellable_release');
+late final _CCancellable_release = _CCancellable_releasePtr.asFunction<void Function(_CCancellable)>();
+late final _CCancellable_retainPtr = _lookup<ffi.NativeFunction<_CCancellable Function(_CCancellable)>>('CCancellable_retain');
+late final _CCancellable_retain = _CCancellable_retainPtr.asFunction<_CCancellable Function(_CCancellable)>();
+late final _CCancellableInitializeDartApiPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<ffi.Void>)>>('CCancellable_initializeDartApi');
+late final _CCancellableInitializeDartApi = _CCancellableInitializeDartApiPtr.asFunction<bool Function(ffi.Pointer<ffi.Void>)>();
+late final _CCancellableCreateDartProtocolQueuePtr = _lookup<ffi.NativeFunction<_CCancellable Function(ffi.Int64, ffi.Pointer<ffi.Void>)>>('CCancellable_createDartProtocolQueue');
+late final _CCancellableCreateDartProtocolQueue = _CCancellableCreateDartProtocolQueuePtr.asFunction<_CCancellable Function(int, ffi.Pointer<ffi.Void>)>();
+late final _CCancellableFinalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCancellable_finalize');
+late final _CCancellableDispatchPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CCancellable, ffi.Int64)>>('CCancellable_dispatch');
+late final _CCancellableDispatch = _CCancellableDispatchPtr.asFunction<void Function(_CCancellable, int)>();
+late final _CCancellableCancelPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CCancellable)>>('CCancellable_cancel');
+late final _CCancellableCancel = _CCancellableCancelPtr.asFunction<void Function(_CCancellable)>();
 
 late final _CVendorConfigFromAssetMakeDefaultPtr = _lookup<ffi.NativeFunction<_CVendorConfigFromAsset Function()>>('CVendorConfigFromAssetMakeDefault');
 late final _CVendorConfigFromAssetMakeDefault = _CVendorConfigFromAssetMakeDefaultPtr.asFunction<_CVendorConfigFromAsset Function()>();
@@ -53463,6 +53668,7 @@ late final _CLocationProviderCpp_setNotifiers_COptional_CLocationNotifier_COptio
 late final _CLocationProviderCpp_setDesiredAccuracy_CDesiredAccuracyPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CLocationProviderCpp, _CDesiredAccuracy)>>('CLocationProviderCpp_setDesiredAccuracy_CDesiredAccuracy');
 late final _CLocationProviderCpp_setDesiredAccuracy_CDesiredAccuracy = _CLocationProviderCpp_setDesiredAccuracy_CDesiredAccuracyPtr.asFunction<void Function(_CLocationProviderCpp, _CDesiredAccuracy)>();
 
+late final _CLocationProviderCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocationProviderCpp_finalize');
 late final _CLocationProviderCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocationProviderCpp_release');
 late final _CLocationProviderCpp_release = _CLocationProviderCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CLocationProviderCpp_retainPtr = _lookup<ffi.NativeFunction<_CLocationProviderCpp Function(ffi.Pointer<ffi.Void>)>>('CLocationProviderCpp_retain');
@@ -53527,6 +53733,7 @@ late final _CLocationNotifier_cg_objectIdentifier = _CLocationNotifier_cg_object
 late final _CLocationNotifier_send_CArray_CLocationPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CLocationNotifier, _CArray_CLocation)>>('CLocationNotifier_send_CArray_CLocation');
 late final _CLocationNotifier_send_CArray_CLocation = _CLocationNotifier_send_CArray_CLocationPtr.asFunction<void Function(_CLocationNotifier, _CArray_CLocation)>();
 
+late final _CLocationNotifier_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocationNotifier_finalize');
 late final _CLocationNotifier_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocationNotifier_release');
 late final _CLocationNotifier_release = _CLocationNotifier_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CLocationNotifier_retainPtr = _lookup<ffi.NativeFunction<_CLocationNotifier Function(ffi.Pointer<ffi.Void>)>>('CLocationNotifier_retain');
@@ -53560,6 +53767,7 @@ late final _CLocationAvailableNotifier_cg_objectIdentifier = _CLocationAvailable
 late final _CLocationAvailableNotifier_send_boolPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CLocationAvailableNotifier, ffi.Bool)>>('CLocationAvailableNotifier_send_bool');
 late final _CLocationAvailableNotifier_send_bool = _CLocationAvailableNotifier_send_boolPtr.asFunction<void Function(_CLocationAvailableNotifier, bool)>();
 
+late final _CLocationAvailableNotifier_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocationAvailableNotifier_finalize');
 late final _CLocationAvailableNotifier_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocationAvailableNotifier_release');
 late final _CLocationAvailableNotifier_release = _CLocationAvailableNotifier_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CLocationAvailableNotifier_retainPtr = _lookup<ffi.NativeFunction<_CLocationAvailableNotifier Function(ffi.Pointer<ffi.Void>)>>('CLocationAvailableNotifier_retain');
@@ -53591,6 +53799,7 @@ late final _CHeadingProviderCpp_cg_objectIdentifier = _CHeadingProviderCpp_cg_ob
 late final _CHeadingProviderCpp_setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CHeadingProviderCpp, _COptional_CHeadingNotifier, _COptional_CHeadingAvailableNotifier)>>('CHeadingProviderCpp_setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifier');
 late final _CHeadingProviderCpp_setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifier = _CHeadingProviderCpp_setNotifiers_COptional_CHeadingNotifier_COptional_CHeadingAvailableNotifierPtr.asFunction<void Function(_CHeadingProviderCpp, _COptional_CHeadingNotifier, _COptional_CHeadingAvailableNotifier)>();
 
+late final _CHeadingProviderCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CHeadingProviderCpp_finalize');
 late final _CHeadingProviderCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CHeadingProviderCpp_release');
 late final _CHeadingProviderCpp_release = _CHeadingProviderCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CHeadingProviderCpp_retainPtr = _lookup<ffi.NativeFunction<_CHeadingProviderCpp Function(ffi.Pointer<ffi.Void>)>>('CHeadingProviderCpp_retain');
@@ -53605,6 +53814,7 @@ late final _CHeadingNotifier_cg_objectIdentifier = _CHeadingNotifier_cg_objectId
 late final _CHeadingNotifier_send_CPlatformHeadingPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CHeadingNotifier, _CPlatformHeading)>>('CHeadingNotifier_send_CPlatformHeading');
 late final _CHeadingNotifier_send_CPlatformHeading = _CHeadingNotifier_send_CPlatformHeadingPtr.asFunction<void Function(_CHeadingNotifier, _CPlatformHeading)>();
 
+late final _CHeadingNotifier_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CHeadingNotifier_finalize');
 late final _CHeadingNotifier_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CHeadingNotifier_release');
 late final _CHeadingNotifier_release = _CHeadingNotifier_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CHeadingNotifier_retainPtr = _lookup<ffi.NativeFunction<_CHeadingNotifier Function(ffi.Pointer<ffi.Void>)>>('CHeadingNotifier_retain');
@@ -53629,6 +53839,7 @@ late final _CHeadingAvailableNotifier_cg_objectIdentifier = _CHeadingAvailableNo
 late final _CHeadingAvailableNotifier_send_boolPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CHeadingAvailableNotifier, ffi.Bool)>>('CHeadingAvailableNotifier_send_bool');
 late final _CHeadingAvailableNotifier_send_bool = _CHeadingAvailableNotifier_send_boolPtr.asFunction<void Function(_CHeadingAvailableNotifier, bool)>();
 
+late final _CHeadingAvailableNotifier_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CHeadingAvailableNotifier_finalize');
 late final _CHeadingAvailableNotifier_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CHeadingAvailableNotifier_release');
 late final _CHeadingAvailableNotifier_release = _CHeadingAvailableNotifier_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CHeadingAvailableNotifier_retainPtr = _lookup<ffi.NativeFunction<_CHeadingAvailableNotifier Function(ffi.Pointer<ffi.Void>)>>('CHeadingAvailableNotifier_retain');
@@ -53667,6 +53878,7 @@ late final _CSystemMemoryManager_S_instance_CContext = _CSystemMemoryManager_S_i
 late final _CSystemMemoryManager_reduceMemoryUsagePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CSystemMemoryManager)>>('CSystemMemoryManager_reduceMemoryUsage');
 late final _CSystemMemoryManager_reduceMemoryUsage = _CSystemMemoryManager_reduceMemoryUsagePtr.asFunction<void Function(_CSystemMemoryManager)>();
 
+late final _CSystemMemoryManager_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSystemMemoryManager_finalize');
 late final _CSystemMemoryManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSystemMemoryManager_release');
 late final _CSystemMemoryManager_release = _CSystemMemoryManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSystemMemoryManager_retainPtr = _lookup<ffi.NativeFunction<_CSystemMemoryManager Function(ffi.Pointer<ffi.Void>)>>('CSystemMemoryManager_retain');
@@ -53753,6 +53965,7 @@ late final _CContextTaggedPointersProvider_cg_objectIdentifier = _CContextTagged
 late final _CContextTaggedPointersProvider_pointersSnapshotPtr = _lookup<ffi.NativeFunction<_CArray_CContextTaggedPointerSnapshot Function(_CContextTaggedPointersProvider)>>('CContextTaggedPointersProvider_pointersSnapshot');
 late final _CContextTaggedPointersProvider_pointersSnapshot = _CContextTaggedPointersProvider_pointersSnapshotPtr.asFunction<_CArray_CContextTaggedPointerSnapshot Function(_CContextTaggedPointersProvider)>();
 
+late final _CContextTaggedPointersProvider_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CContextTaggedPointersProvider_finalize');
 late final _CContextTaggedPointersProvider_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CContextTaggedPointersProvider_release');
 late final _CContextTaggedPointersProvider_release = _CContextTaggedPointersProvider_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CContextTaggedPointersProvider_retainPtr = _lookup<ffi.NativeFunction<_CContextTaggedPointersProvider Function(ffi.Pointer<ffi.Void>)>>('CContextTaggedPointersProvider_retain');
@@ -53782,6 +53995,7 @@ late final _CContextObserverCpp_onContextCreated = _CContextObserverCpp_onContex
 late final _CContextObserverCpp_onContextDestroyed_CContextTaggedPointersProviderPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CContextObserverCpp, _CContextTaggedPointersProvider)>>('CContextObserverCpp_onContextDestroyed_CContextTaggedPointersProvider');
 late final _CContextObserverCpp_onContextDestroyed_CContextTaggedPointersProvider = _CContextObserverCpp_onContextDestroyed_CContextTaggedPointersProviderPtr.asFunction<void Function(_CContextObserverCpp, _CContextTaggedPointersProvider)>();
 
+late final _CContextObserverCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CContextObserverCpp_finalize');
 late final _CContextObserverCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CContextObserverCpp_release');
 late final _CContextObserverCpp_release = _CContextObserverCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CContextObserverCpp_retainPtr = _lookup<ffi.NativeFunction<_CContextObserverCpp Function(ffi.Pointer<ffi.Void>)>>('CContextObserverCpp_retain');
@@ -53805,6 +54019,7 @@ late final _CFile_S_fromAsset_CContext_CString = _CFile_S_fromAsset_CContext_CSt
 late final _CFile_C_createWith_CStringPtr = _lookup<ffi.NativeFunction<_CFile Function(_CString)>>('CFile_C_createWith_CString');
 late final _CFile_C_createWith_CString = _CFile_C_createWith_CStringPtr.asFunction<_CFile Function(_CString)>();
 
+late final _CFile_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CFile_finalize');
 late final _CFile_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CFile_release');
 late final _CFile_release = _CFile_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CFile_retainPtr = _lookup<ffi.NativeFunction<_CFile Function(ffi.Pointer<ffi.Void>)>>('CFile_retain');
@@ -54096,6 +54311,7 @@ late final _CItemMarkerInfo_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<
 late final _CItemMarkerInfo_cg_objectIdentifier = _CItemMarkerInfo_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CItemMarkerInfo_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CItemMarkerInfo_finalize');
 late final _CItemMarkerInfo_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CItemMarkerInfo_release');
 late final _CItemMarkerInfo_release = _CItemMarkerInfo_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CItemMarkerInfo_retainPtr = _lookup<ffi.NativeFunction<_CItemMarkerInfo Function(ffi.Pointer<ffi.Void>)>>('CItemMarkerInfo_retain');
@@ -54337,6 +54553,7 @@ late final _CPolylineGeometry_cg_objectIdentifier = _CPolylineGeometry_cg_object
 late final _CPolylineGeometry_C_createWith_CArray_CGeoPointPtr = _lookup<ffi.NativeFunction<_CPolylineGeometry Function(_CArray_CGeoPoint)>>('CPolylineGeometry_C_createWith_CArray_CGeoPoint');
 late final _CPolylineGeometry_C_createWith_CArray_CGeoPoint = _CPolylineGeometry_C_createWith_CArray_CGeoPointPtr.asFunction<_CPolylineGeometry Function(_CArray_CGeoPoint)>();
 
+late final _CPolylineGeometry_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPolylineGeometry_finalize');
 late final _CPolylineGeometry_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPolylineGeometry_release');
 late final _CPolylineGeometry_release = _CPolylineGeometry_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPolylineGeometry_retainPtr = _lookup<ffi.NativeFunction<_CPolylineGeometry Function(ffi.Pointer<ffi.Void>)>>('CPolylineGeometry_retain');
@@ -54752,6 +54969,7 @@ late final _CDirectoryObject_formattedAddress_CFormattingType = _CDirectoryObjec
 late final _CDirectoryObject_publicTransportScheduleInfo_uint64_tPtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CPublicTransportDirectoryScheduleInfo Function(_CDirectoryObject, ffi.Uint64)>>('CDirectoryObject_publicTransportScheduleInfo_uint64_t');
 late final _CDirectoryObject_publicTransportScheduleInfo_uint64_t = _CDirectoryObject_publicTransportScheduleInfo_uint64_tPtr.asFunction<_CFuture_COptional_CPublicTransportDirectoryScheduleInfo Function(_CDirectoryObject, int)>();
 
+late final _CDirectoryObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectoryObject_finalize');
 late final _CDirectoryObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectoryObject_release');
 late final _CDirectoryObject_release = _CDirectoryObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDirectoryObject_retainPtr = _lookup<ffi.NativeFunction<_CDirectoryObject Function(ffi.Pointer<ffi.Void>)>>('CDirectoryObject_retain');
@@ -54945,7 +55163,9 @@ late final _CFuture_COptional_CPublicTransportDirectoryScheduleInfoReceivePtr = 
     _CFuture_COptional_CPublicTransportDirectoryScheduleInfo,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CPublicTransportDirectoryScheduleInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_COptional_CPublicTransportDirectoryScheduleInfo_receive');
 late final _CFuture_COptional_CPublicTransportDirectoryScheduleInfoReceive = _CFuture_COptional_CPublicTransportDirectoryScheduleInfoReceivePtr.asFunction<
@@ -54953,7 +55173,9 @@ late final _CFuture_COptional_CPublicTransportDirectoryScheduleInfoReceive = _CF
     _CFuture_COptional_CPublicTransportDirectoryScheduleInfo,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CPublicTransportDirectoryScheduleInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -54962,15 +55184,6 @@ late final _COptional_CPublicTransportDirectoryScheduleInfoMakeDefault = _COptio
 
 late final _COptional_CPublicTransportDirectoryScheduleInfo_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CPublicTransportDirectoryScheduleInfo)>>('COptional_CPublicTransportDirectoryScheduleInfo_release');
 late final _COptional_CPublicTransportDirectoryScheduleInfo_release = _COptional_CPublicTransportDirectoryScheduleInfo_releasePtr.asFunction<void Function(_COptional_CPublicTransportDirectoryScheduleInfo)>();
-
-late final _CCancellableMakeDefaultPtr = _lookup<ffi.NativeFunction<_CCancellable Function()>>('CCancellableMakeDefault');
-late final _CCancellableMakeDefault = _CCancellableMakeDefaultPtr.asFunction<_CCancellable Function()>();
-late final _CCancellable_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CCancellable)>>('CCancellable_release');
-late final _CCancellable_release = _CCancellable_releasePtr.asFunction<void Function(_CCancellable)>();
-late final _CCancellable_retainPtr = _lookup<ffi.NativeFunction<_CCancellable Function(_CCancellable)>>('CCancellable_retain');
-late final _CCancellable_retain = _CCancellable_retainPtr.asFunction<_CCancellable Function(_CCancellable)>();
-late final _CCancellableCancelPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CCancellable)>>('CCancellable_cancel');
-late final _CCancellableCancel = _CCancellableCancelPtr.asFunction<void Function(_CCancellable)>();
 late final _CPage_itemsPtr = _lookup<ffi.NativeFunction<_CArray_CDirectoryObject Function(_CPage)>>('CPage_items');
 late final _CPage_items = _CPage_itemsPtr.asFunction<_CArray_CDirectoryObject Function(_CPage)>();
 
@@ -54982,6 +55195,7 @@ late final _CPage_fetchPrevPage = _CPage_fetchPrevPagePtr.asFunction<_CFuture_CO
 late final _CPage_fetchNextPagePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CPage Function(_CPage)>>('CPage_fetchNextPage');
 late final _CPage_fetchNextPage = _CPage_fetchNextPagePtr.asFunction<_CFuture_COptional_CPage Function(_CPage)>();
 
+late final _CPage_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPage_finalize');
 late final _CPage_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPage_release');
 late final _CPage_release = _CPage_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPage_retainPtr = _lookup<ffi.NativeFunction<_CPage Function(ffi.Pointer<ffi.Void>)>>('CPage_retain');
@@ -55014,7 +55228,9 @@ late final _CFuture_COptional_CPageReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_COptional_CPage,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CPage, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_COptional_CPage_receive');
 late final _CFuture_COptional_CPageReceive = _CFuture_COptional_CPageReceivePtr.asFunction<
@@ -55022,7 +55238,9 @@ late final _CFuture_COptional_CPageReceive = _CFuture_COptional_CPageReceivePtr.
     _CFuture_COptional_CPage,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CPage, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -55070,6 +55288,7 @@ late final _CCategory_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Po
 late final _CCategory_cg_objectIdentifier = _CCategory_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CCategory_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategory_finalize');
 late final _CCategory_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategory_release');
 late final _CCategory_release = _CCategory_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCategory_retainPtr = _lookup<ffi.NativeFunction<_CCategory Function(ffi.Pointer<ffi.Void>)>>('CCategory_retain');
@@ -55104,6 +55323,7 @@ late final _CCategoriesPage_fetchPrevPage = _CCategoriesPage_fetchPrevPagePtr.as
 late final _CCategoriesPage_fetchNextPagePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CCategoriesPage Function(_CCategoriesPage)>>('CCategoriesPage_fetchNextPage');
 late final _CCategoriesPage_fetchNextPage = _CCategoriesPage_fetchNextPagePtr.asFunction<_CFuture_COptional_CCategoriesPage Function(_CCategoriesPage)>();
 
+late final _CCategoriesPage_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoriesPage_finalize');
 late final _CCategoriesPage_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoriesPage_release');
 late final _CCategoriesPage_release = _CCategoriesPage_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCategoriesPage_retainPtr = _lookup<ffi.NativeFunction<_CCategoriesPage Function(ffi.Pointer<ffi.Void>)>>('CCategoriesPage_retain');
@@ -55123,7 +55343,9 @@ late final _CFuture_COptional_CCategoriesPageReceivePtr = _lookup<ffi.NativeFunc
     _CFuture_COptional_CCategoriesPage,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_COptional_CCategoriesPage_receive');
 late final _CFuture_COptional_CCategoriesPageReceive = _CFuture_COptional_CCategoriesPageReceivePtr.asFunction<
@@ -55131,7 +55353,9 @@ late final _CFuture_COptional_CCategoriesPageReceive = _CFuture_COptional_CCateg
     _CFuture_COptional_CCategoriesPage,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CCategoriesPage, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -55149,6 +55373,7 @@ late final _CSearchCategoriesResult_cg_objectIdentifierPtr = _lookup<ffi.NativeF
 late final _CSearchCategoriesResult_cg_objectIdentifier = _CSearchCategoriesResult_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CSearchCategoriesResult_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchCategoriesResult_finalize');
 late final _CSearchCategoriesResult_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchCategoriesResult_release');
 late final _CSearchCategoriesResult_release = _CSearchCategoriesResult_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchCategoriesResult_retainPtr = _lookup<ffi.NativeFunction<_CSearchCategoriesResult Function(ffi.Pointer<ffi.Void>)>>('CSearchCategoriesResult_retain');
@@ -55181,6 +55406,7 @@ late final _CWidget_cg_objectIdentifier = _CWidget_cg_objectIdentifierPtr.asFunc
 late final _CWidget_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CWidget)>>('CWidget_cg_getSelector');
 late final _CWidget_cg_getSelector = _CWidget_cg_getSelectorPtr.asFunction<int Function(_CWidget)>();
 
+late final _CWidget_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CWidget_finalize');
 late final _CWidget_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CWidget_release');
 late final _CWidget_release = _CWidget_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CWidget_retainPtr = _lookup<ffi.NativeFunction<_CWidget Function(ffi.Pointer<ffi.Void>)>>('CWidget_retain');
@@ -55205,6 +55431,7 @@ late final _CCheckbox_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Po
 late final _CCheckbox_cg_objectIdentifier = _CCheckbox_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CCheckbox_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCheckbox_finalize');
 late final _CCheckbox_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCheckbox_release');
 late final _CCheckbox_release = _CCheckbox_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCheckbox_retainPtr = _lookup<ffi.NativeFunction<_CCheckbox Function(ffi.Pointer<ffi.Void>)>>('CCheckbox_retain');
@@ -55226,6 +55453,7 @@ late final _CCheckableItem_cg_objectIdentifier = _CCheckableItem_cg_objectIdenti
 late final _CCheckableItem_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CCheckableItem)>>('CCheckableItem_cg_getSelector');
 late final _CCheckableItem_cg_getSelector = _CCheckableItem_cg_getSelectorPtr.asFunction<int Function(_CCheckableItem)>();
 
+late final _CCheckableItem_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCheckableItem_finalize');
 late final _CCheckableItem_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCheckableItem_release');
 late final _CCheckableItem_release = _CCheckableItem_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCheckableItem_retainPtr = _lookup<ffi.NativeFunction<_CCheckableItem Function(ffi.Pointer<ffi.Void>)>>('CCheckableItem_retain');
@@ -55246,6 +55474,7 @@ late final _CCheckableGroupedItem_cg_objectIdentifierPtr = _lookup<ffi.NativeFun
 late final _CCheckableGroupedItem_cg_objectIdentifier = _CCheckableGroupedItem_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CCheckableGroupedItem_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCheckableGroupedItem_finalize');
 late final _CCheckableGroupedItem_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCheckableGroupedItem_release');
 late final _CCheckableGroupedItem_release = _CCheckableGroupedItem_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCheckableGroupedItem_retainPtr = _lookup<ffi.NativeFunction<_CCheckableGroupedItem Function(ffi.Pointer<ffi.Void>)>>('CCheckableGroupedItem_retain');
@@ -55260,6 +55489,7 @@ late final _CCheckableItemsGroup_cg_objectIdentifierPtr = _lookup<ffi.NativeFunc
 late final _CCheckableItemsGroup_cg_objectIdentifier = _CCheckableItemsGroup_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CCheckableItemsGroup_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCheckableItemsGroup_finalize');
 late final _CCheckableItemsGroup_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCheckableItemsGroup_release');
 late final _CCheckableItemsGroup_release = _CCheckableItemsGroup_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCheckableItemsGroup_retainPtr = _lookup<ffi.NativeFunction<_CCheckableItemsGroup Function(ffi.Pointer<ffi.Void>)>>('CCheckableItemsGroup_retain');
@@ -55293,6 +55523,7 @@ late final _CSimpleCheckableItem_cg_objectIdentifierPtr = _lookup<ffi.NativeFunc
 late final _CSimpleCheckableItem_cg_objectIdentifier = _CSimpleCheckableItem_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CSimpleCheckableItem_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSimpleCheckableItem_finalize');
 late final _CSimpleCheckableItem_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSimpleCheckableItem_release');
 late final _CSimpleCheckableItem_release = _CSimpleCheckableItem_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSimpleCheckableItem_retainPtr = _lookup<ffi.NativeFunction<_CSimpleCheckableItem Function(ffi.Pointer<ffi.Void>)>>('CSimpleCheckableItem_retain');
@@ -55307,6 +55538,7 @@ late final _CGroupCheckableItem_cg_objectIdentifierPtr = _lookup<ffi.NativeFunct
 late final _CGroupCheckableItem_cg_objectIdentifier = _CGroupCheckableItem_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CGroupCheckableItem_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGroupCheckableItem_finalize');
 late final _CGroupCheckableItem_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGroupCheckableItem_release');
 late final _CGroupCheckableItem_release = _CGroupCheckableItem_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CGroupCheckableItem_retainPtr = _lookup<ffi.NativeFunction<_CGroupCheckableItem Function(ffi.Pointer<ffi.Void>)>>('CGroupCheckableItem_retain');
@@ -55366,6 +55598,7 @@ late final _CRangeWidget_cg_objectIdentifier = _CRangeWidget_cg_objectIdentifier
 late final _CRangeWidget_setValues_double_doublePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CRangeWidget, ffi.Double, ffi.Double)>>('CRangeWidget_setValues_double_double');
 late final _CRangeWidget_setValues_double_double = _CRangeWidget_setValues_double_doublePtr.asFunction<void Function(_CRangeWidget, double, double)>();
 
+late final _CRangeWidget_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRangeWidget_finalize');
 late final _CRangeWidget_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRangeWidget_release');
 late final _CRangeWidget_release = _CRangeWidget_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRangeWidget_retainPtr = _lookup<ffi.NativeFunction<_CRangeWidget Function(ffi.Pointer<ffi.Void>)>>('CRangeWidget_retain');
@@ -55398,6 +55631,7 @@ late final _CSearchResult_cg_objectIdentifier = _CSearchResult_cg_objectIdentifi
 late final _CSearchResult_markerTitles_CArray_CDgisObjectIdPtr = _lookup<ffi.NativeFunction<_CArray_CFuture_CArray_CUIMarkerInfo Function(_CSearchResult, _CArray_CDgisObjectId)>>('CSearchResult_markerTitles_CArray_CDgisObjectId');
 late final _CSearchResult_markerTitles_CArray_CDgisObjectId = _CSearchResult_markerTitles_CArray_CDgisObjectIdPtr.asFunction<_CArray_CFuture_CArray_CUIMarkerInfo Function(_CSearchResult, _CArray_CDgisObjectId)>();
 
+late final _CSearchResult_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchResult_finalize');
 late final _CSearchResult_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchResult_release');
 late final _CSearchResult_release = _CSearchResult_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchResult_retainPtr = _lookup<ffi.NativeFunction<_CSearchResult Function(ffi.Pointer<ffi.Void>)>>('CSearchResult_retain');
@@ -55425,6 +55659,7 @@ late final _CGeometry_intersects_CGeometry = _CGeometry_intersects_CGeometryPtr.
 late final _CGeometry_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CGeometry)>>('CGeometry_cg_getSelector');
 late final _CGeometry_cg_getSelector = _CGeometry_cg_getSelectorPtr.asFunction<int Function(_CGeometry)>();
 
+late final _CGeometry_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometry_finalize');
 late final _CGeometry_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometry_release');
 late final _CGeometry_release = _CGeometry_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CGeometry_retainPtr = _lookup<ffi.NativeFunction<_CGeometry Function(ffi.Pointer<ffi.Void>)>>('CGeometry_retain');
@@ -55450,7 +55685,9 @@ late final _CFuture_COptional_CArray_CItemMarkerInfoReceivePtr = _lookup<ffi.Nat
     _CFuture_COptional_CArray_CItemMarkerInfo,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CArray_CItemMarkerInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_COptional_CArray_CItemMarkerInfo_receive');
 late final _CFuture_COptional_CArray_CItemMarkerInfoReceive = _CFuture_COptional_CArray_CItemMarkerInfoReceivePtr.asFunction<
@@ -55458,7 +55695,9 @@ late final _CFuture_COptional_CArray_CItemMarkerInfoReceive = _CFuture_COptional
     _CFuture_COptional_CArray_CItemMarkerInfo,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CArray_CItemMarkerInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -55505,7 +55744,9 @@ late final _CFuture_CArray_CUIMarkerInfoReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CArray_CUIMarkerInfo,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CUIMarkerInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CArray_CUIMarkerInfo_receive');
 late final _CFuture_CArray_CUIMarkerInfoReceive = _CFuture_CArray_CUIMarkerInfoReceivePtr.asFunction<
@@ -55513,7 +55754,9 @@ late final _CFuture_CArray_CUIMarkerInfoReceive = _CFuture_CArray_CUIMarkerInfoR
     _CFuture_CArray_CUIMarkerInfo,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CUIMarkerInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -55547,6 +55790,7 @@ late final _CSearchQuery_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi
 late final _CSearchQuery_cg_objectIdentifier = _CSearchQuery_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CSearchQuery_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchQuery_finalize');
 late final _CSearchQuery_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchQuery_release');
 late final _CSearchQuery_release = _CSearchQuery_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchQuery_retainPtr = _lookup<ffi.NativeFunction<_CSearchQuery Function(ffi.Pointer<ffi.Void>)>>('CSearchQuery_retain');
@@ -55559,6 +55803,7 @@ late final _CCategoryQuery_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<f
 late final _CCategoryQuery_cg_objectIdentifier = _CCategoryQuery_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CCategoryQuery_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryQuery_finalize');
 late final _CCategoryQuery_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryQuery_release');
 late final _CCategoryQuery_release = _CCategoryQuery_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCategoryQuery_retainPtr = _lookup<ffi.NativeFunction<_CCategoryQuery Function(ffi.Pointer<ffi.Void>)>>('CCategoryQuery_retain');
@@ -55573,6 +55818,7 @@ late final _CSuggestObjectHandler_cg_objectIdentifierPtr = _lookup<ffi.NativeFun
 late final _CSuggestObjectHandler_cg_objectIdentifier = _CSuggestObjectHandler_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CSuggestObjectHandler_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestObjectHandler_finalize');
 late final _CSuggestObjectHandler_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestObjectHandler_release');
 late final _CSuggestObjectHandler_release = _CSuggestObjectHandler_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSuggestObjectHandler_retainPtr = _lookup<ffi.NativeFunction<_CSuggestObjectHandler Function(ffi.Pointer<ffi.Void>)>>('CSuggestObjectHandler_retain');
@@ -55587,6 +55833,7 @@ late final _CPerformSearchHandler_cg_objectIdentifierPtr = _lookup<ffi.NativeFun
 late final _CPerformSearchHandler_cg_objectIdentifier = _CPerformSearchHandler_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CPerformSearchHandler_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPerformSearchHandler_finalize');
 late final _CPerformSearchHandler_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPerformSearchHandler_release');
 late final _CPerformSearchHandler_release = _CPerformSearchHandler_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPerformSearchHandler_retainPtr = _lookup<ffi.NativeFunction<_CPerformSearchHandler Function(ffi.Pointer<ffi.Void>)>>('CPerformSearchHandler_retain');
@@ -55603,6 +55850,7 @@ late final _CIncompleteTextHandler_cg_objectIdentifierPtr = _lookup<ffi.NativeFu
 late final _CIncompleteTextHandler_cg_objectIdentifier = _CIncompleteTextHandler_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CIncompleteTextHandler_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CIncompleteTextHandler_finalize');
 late final _CIncompleteTextHandler_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CIncompleteTextHandler_release');
 late final _CIncompleteTextHandler_release = _CIncompleteTextHandler_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CIncompleteTextHandler_retainPtr = _lookup<ffi.NativeFunction<_CIncompleteTextHandler Function(ffi.Pointer<ffi.Void>)>>('CIncompleteTextHandler_retain');
@@ -55655,6 +55903,7 @@ late final _CSuggest_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Poi
 late final _CSuggest_cg_objectIdentifier = _CSuggest_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CSuggest_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggest_finalize');
 late final _CSuggest_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggest_release');
 late final _CSuggest_release = _CSuggest_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSuggest_retainPtr = _lookup<ffi.NativeFunction<_CSuggest Function(ffi.Pointer<ffi.Void>)>>('CSuggest_retain');
@@ -55669,6 +55918,7 @@ late final _CSuggestResult_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<f
 late final _CSuggestResult_cg_objectIdentifier = _CSuggestResult_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CSuggestResult_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestResult_finalize');
 late final _CSuggestResult_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestResult_release');
 late final _CSuggestResult_release = _CSuggestResult_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSuggestResult_retainPtr = _lookup<ffi.NativeFunction<_CSuggestResult Function(ffi.Pointer<ffi.Void>)>>('CSuggestResult_retain');
@@ -55694,6 +55944,7 @@ late final _CSuggestQuery_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ff
 late final _CSuggestQuery_cg_objectIdentifier = _CSuggestQuery_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CSuggestQuery_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestQuery_finalize');
 late final _CSuggestQuery_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestQuery_release');
 late final _CSuggestQuery_release = _CSuggestQuery_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSuggestQuery_retainPtr = _lookup<ffi.NativeFunction<_CSuggestQuery Function(ffi.Pointer<ffi.Void>)>>('CSuggestQuery_retain');
@@ -55720,6 +55971,7 @@ late final _CSearchManager_searchByIds_CArray_CString_COptional_CLocale = _CSear
 late final _CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocalePtr = _lookup<ffi.NativeFunction<_CFuture_CArray_CDirectoryObject Function(_CSearchManager, _CArray_CDgisObjectId, _COptional_CLocale)>>('CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocale');
 late final _CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocale = _CSearchManager_searchByDirectoryObjectIds_CArray_CDgisObjectId_COptional_CLocalePtr.asFunction<_CFuture_CArray_CDirectoryObject Function(_CSearchManager, _CArray_CDgisObjectId, _COptional_CLocale)>();
 
+late final _CSearchManager_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchManager_finalize');
 late final _CSearchManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchManager_release');
 late final _CSearchManager_release = _CSearchManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchManager_retainPtr = _lookup<ffi.NativeFunction<_CSearchManager Function(ffi.Pointer<ffi.Void>)>>('CSearchManager_retain');
@@ -55739,7 +55991,9 @@ late final _CFuture_CSuggestResultReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CSuggestResult,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSuggestResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CSuggestResult_receive');
 late final _CFuture_CSuggestResultReceive = _CFuture_CSuggestResultReceivePtr.asFunction<
@@ -55747,7 +56001,9 @@ late final _CFuture_CSuggestResultReceive = _CFuture_CSuggestResultReceivePtr.as
     _CFuture_CSuggestResult,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSuggestResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -55762,7 +56018,9 @@ late final _CFuture_CSearchResultReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CSearchResult,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSearchResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CSearchResult_receive');
 late final _CFuture_CSearchResultReceive = _CFuture_CSearchResultReceivePtr.asFunction<
@@ -55770,7 +56028,9 @@ late final _CFuture_CSearchResultReceive = _CFuture_CSearchResultReceivePtr.asFu
     _CFuture_CSearchResult,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSearchResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -55785,7 +56045,9 @@ late final _CFuture_CSearchCategoriesResultReceivePtr = _lookup<ffi.NativeFuncti
     _CFuture_CSearchCategoriesResult,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CSearchCategoriesResult_receive');
 late final _CFuture_CSearchCategoriesResultReceive = _CFuture_CSearchCategoriesResultReceivePtr.asFunction<
@@ -55793,7 +56055,9 @@ late final _CFuture_CSearchCategoriesResultReceive = _CFuture_CSearchCategoriesR
     _CFuture_CSearchCategoriesResult,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSearchCategoriesResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -55808,7 +56072,9 @@ late final _CFuture_CArray_CDirectoryObjectReceivePtr = _lookup<ffi.NativeFuncti
     _CFuture_CArray_CDirectoryObject,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CArray_CDirectoryObject_receive');
 late final _CFuture_CArray_CDirectoryObjectReceive = _CFuture_CArray_CDirectoryObjectReceivePtr.asFunction<
@@ -55816,7 +56082,9 @@ late final _CFuture_CArray_CDirectoryObjectReceive = _CFuture_CArray_CDirectoryO
     _CFuture_CArray_CDirectoryObject,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CDirectoryObject, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 late final _CFunction_G_makeLocale_With_CStringPtr = _lookup<ffi.NativeFunction<_COptional_CLocale Function(_CString)>>('CFunction_G_makeLocale_With_CString');
@@ -55873,6 +56141,7 @@ late final _CSearchQueryBuilder_build = _CSearchQueryBuilder_buildPtr.asFunction
 late final _CSearchQueryBuilder_C_createPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function()>>('CSearchQueryBuilder_C_create');
 late final _CSearchQueryBuilder_C_create = _CSearchQueryBuilder_C_createPtr.asFunction<_CSearchQueryBuilder Function()>();
 
+late final _CSearchQueryBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryBuilder_finalize');
 late final _CSearchQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryBuilder_release');
 late final _CSearchQueryBuilder_release = _CSearchQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchQueryBuilder_retainPtr = _lookup<ffi.NativeFunction<_CSearchQueryBuilder Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryBuilder_retain');
@@ -55926,6 +56195,7 @@ late final _CSuggestQueryBuilder_build = _CSuggestQueryBuilder_buildPtr.asFuncti
 late final _CSuggestQueryBuilder_C_createWith_CStringPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(_CString)>>('CSuggestQueryBuilder_C_createWith_CString');
 late final _CSuggestQueryBuilder_C_createWith_CString = _CSuggestQueryBuilder_C_createWith_CStringPtr.asFunction<_CSuggestQueryBuilder Function(_CString)>();
 
+late final _CSuggestQueryBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestQueryBuilder_finalize');
 late final _CSuggestQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSuggestQueryBuilder_release');
 late final _CSuggestQueryBuilder_release = _CSuggestQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSuggestQueryBuilder_retainPtr = _lookup<ffi.NativeFunction<_CSuggestQueryBuilder Function(ffi.Pointer<ffi.Void>)>>('CSuggestQueryBuilder_retain');
@@ -55961,6 +56231,7 @@ late final _CCategorySearchQueryBuilder_build = _CCategorySearchQueryBuilder_bui
 late final _CCategorySearchQueryBuilder_C_createWith_CStringPtr = _lookup<ffi.NativeFunction<_CCategorySearchQueryBuilder Function(_CString)>>('CCategorySearchQueryBuilder_C_createWith_CString');
 late final _CCategorySearchQueryBuilder_C_createWith_CString = _CCategorySearchQueryBuilder_C_createWith_CStringPtr.asFunction<_CCategorySearchQueryBuilder Function(_CString)>();
 
+late final _CCategorySearchQueryBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategorySearchQueryBuilder_finalize');
 late final _CCategorySearchQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategorySearchQueryBuilder_release');
 late final _CCategorySearchQueryBuilder_release = _CCategorySearchQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCategorySearchQueryBuilder_retainPtr = _lookup<ffi.NativeFunction<_CCategorySearchQueryBuilder Function(ffi.Pointer<ffi.Void>)>>('CCategorySearchQueryBuilder_retain');
@@ -55990,6 +56261,7 @@ late final _CCategoryListQueryBuilder_build = _CCategoryListQueryBuilder_buildPt
 late final _CCategoryListQueryBuilder_C_createPtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function()>>('CCategoryListQueryBuilder_C_create');
 late final _CCategoryListQueryBuilder_C_create = _CCategoryListQueryBuilder_C_createPtr.asFunction<_CCategoryListQueryBuilder Function()>();
 
+late final _CCategoryListQueryBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryListQueryBuilder_finalize');
 late final _CCategoryListQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryListQueryBuilder_release');
 late final _CCategoryListQueryBuilder_release = _CCategoryListQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCategoryListQueryBuilder_retainPtr = _lookup<ffi.NativeFunction<_CCategoryListQueryBuilder Function(ffi.Pointer<ffi.Void>)>>('CCategoryListQueryBuilder_retain');
@@ -56010,6 +56282,7 @@ late final _CCategoryGetByIdsQueryBuilder_build = _CCategoryGetByIdsQueryBuilder
 late final _CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricIdPtr = _lookup<ffi.NativeFunction<_CCategoryGetByIdsQueryBuilder Function(_CArray_CRubricId)>>('CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricId');
 late final _CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricId = _CCategoryGetByIdsQueryBuilder_C_createWith_CArray_CRubricIdPtr.asFunction<_CCategoryGetByIdsQueryBuilder Function(_CArray_CRubricId)>();
 
+late final _CCategoryGetByIdsQueryBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryGetByIdsQueryBuilder_finalize');
 late final _CCategoryGetByIdsQueryBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCategoryGetByIdsQueryBuilder_release');
 late final _CCategoryGetByIdsQueryBuilder_release = _CCategoryGetByIdsQueryBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCategoryGetByIdsQueryBuilder_retainPtr = _lookup<ffi.NativeFunction<_CCategoryGetByIdsQueryBuilder Function(ffi.Pointer<ffi.Void>)>>('CCategoryGetByIdsQueryBuilder_retain');
@@ -56035,6 +56308,7 @@ late final _CSearchQueryWithInfo_cg_objectIdentifier = _CSearchQueryWithInfo_cg_
 late final _CSearchQueryWithInfo_C_createWith_CSearchQuery_CString_CStringPtr = _lookup<ffi.NativeFunction<_CSearchQueryWithInfo Function(_CSearchQuery, _CString, _CString)>>('CSearchQueryWithInfo_C_createWith_CSearchQuery_CString_CString');
 late final _CSearchQueryWithInfo_C_createWith_CSearchQuery_CString_CString = _CSearchQueryWithInfo_C_createWith_CSearchQuery_CString_CStringPtr.asFunction<_CSearchQueryWithInfo Function(_CSearchQuery, _CString, _CString)>();
 
+late final _CSearchQueryWithInfo_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryWithInfo_finalize');
 late final _CSearchQueryWithInfo_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryWithInfo_release');
 late final _CSearchQueryWithInfo_release = _CSearchQueryWithInfo_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchQueryWithInfo_retainPtr = _lookup<ffi.NativeFunction<_CSearchQueryWithInfo Function(ffi.Pointer<ffi.Void>)>>('CSearchQueryWithInfo_retain');
@@ -56054,6 +56328,7 @@ late final _CSearchHistoryKeyStrategyCpp_cg_objectIdentifier = _CSearchHistoryKe
 late final _CSearchHistoryKeyStrategyCpp_create_CSearchHistoryItemPtr = _lookup<ffi.NativeFunction<_CString Function(_CSearchHistoryKeyStrategyCpp, _CSearchHistoryItem)>>('CSearchHistoryKeyStrategyCpp_create_CSearchHistoryItem');
 late final _CSearchHistoryKeyStrategyCpp_create_CSearchHistoryItem = _CSearchHistoryKeyStrategyCpp_create_CSearchHistoryItemPtr.asFunction<_CString Function(_CSearchHistoryKeyStrategyCpp, _CSearchHistoryItem)>();
 
+late final _CSearchHistoryKeyStrategyCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchHistoryKeyStrategyCpp_finalize');
 late final _CSearchHistoryKeyStrategyCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchHistoryKeyStrategyCpp_release');
 late final _CSearchHistoryKeyStrategyCpp_release = _CSearchHistoryKeyStrategyCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchHistoryKeyStrategyCpp_retainPtr = _lookup<ffi.NativeFunction<_CSearchHistoryKeyStrategyCpp Function(ffi.Pointer<ffi.Void>)>>('CSearchHistoryKeyStrategyCpp_retain');
@@ -56073,6 +56348,7 @@ late final _CSearchHistoryResult_cg_objectIdentifierPtr = _lookup<ffi.NativeFunc
 late final _CSearchHistoryResult_cg_objectIdentifier = _CSearchHistoryResult_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CSearchHistoryResult_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchHistoryResult_finalize');
 late final _CSearchHistoryResult_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchHistoryResult_release');
 late final _CSearchHistoryResult_release = _CSearchHistoryResult_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchHistoryResult_retainPtr = _lookup<ffi.NativeFunction<_CSearchHistoryResult Function(ffi.Pointer<ffi.Void>)>>('CSearchHistoryResult_retain');
@@ -56128,6 +56404,7 @@ late final _CSearchHistory_clear = _CSearchHistory_clearPtr.asFunction<void Func
 late final _CSearchHistory_setKeyStrategy_COptional_CSearchHistoryKeyStrategyPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CSearchHistory, _COptional_CSearchHistoryKeyStrategy)>>('CSearchHistory_setKeyStrategy_COptional_CSearchHistoryKeyStrategy');
 late final _CSearchHistory_setKeyStrategy_COptional_CSearchHistoryKeyStrategy = _CSearchHistory_setKeyStrategy_COptional_CSearchHistoryKeyStrategyPtr.asFunction<void Function(_CSearchHistory, _COptional_CSearchHistoryKeyStrategy)>();
 
+late final _CSearchHistory_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchHistory_finalize');
 late final _CSearchHistory_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSearchHistory_release');
 late final _CSearchHistory_release = _CSearchHistory_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSearchHistory_retainPtr = _lookup<ffi.NativeFunction<_CSearchHistory Function(ffi.Pointer<ffi.Void>)>>('CSearchHistory_retain');
@@ -56147,7 +56424,9 @@ late final _CFuture_CSearchHistoryResultReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CSearchHistoryResult,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSearchHistoryResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CSearchHistoryResult_receive');
 late final _CFuture_CSearchHistoryResultReceive = _CFuture_CSearchHistoryResultReceivePtr.asFunction<
@@ -56155,7 +56434,9 @@ late final _CFuture_CSearchHistoryResultReceive = _CFuture_CSearchHistoryResultR
     _CFuture_CSearchHistoryResult,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CSearchHistoryResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -56175,14 +56456,18 @@ late final _CChannel_CChangeTypeConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CChannel_CChangeType,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CChangeType, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CChangeType, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CChannel_CChangeType_connect');
 late final _CChannel_CChangeTypeConnect = _CChannel_CChangeTypeConnectPtr.asFunction<
   _CCancellable Function(
     _CChannel_CChangeType,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CChangeType, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CChangeType, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 late final _CPackedSearchQuery_queryTextPtr = _lookup<ffi.NativeFunction<_CString Function(_CPackedSearchQuery)>>('CPackedSearchQuery_queryText');
@@ -56228,6 +56513,7 @@ late final _CPackedSearchQuery_toBytes = _CPackedSearchQuery_toBytesPtr.asFuncti
 late final _CPackedSearchQuery_toSearchQueryPtr = _lookup<ffi.NativeFunction<_CSearchQuery Function(_CPackedSearchQuery)>>('CPackedSearchQuery_toSearchQuery');
 late final _CPackedSearchQuery_toSearchQuery = _CPackedSearchQuery_toSearchQueryPtr.asFunction<_CSearchQuery Function(_CPackedSearchQuery)>();
 
+late final _CPackedSearchQuery_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPackedSearchQuery_finalize');
 late final _CPackedSearchQuery_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPackedSearchQuery_release');
 late final _CPackedSearchQuery_release = _CPackedSearchQuery_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPackedSearchQuery_retainPtr = _lookup<ffi.NativeFunction<_CPackedSearchQuery Function(ffi.Pointer<ffi.Void>)>>('CPackedSearchQuery_retain');
@@ -56276,6 +56562,7 @@ late final _CPointGeometry_C_createWith_CGeoPoint = _CPointGeometry_C_createWith
 late final _CPointGeometry_C_createWith_CGeoPointWithElevationPtr = _lookup<ffi.NativeFunction<_CPointGeometry Function(_CGeoPointWithElevation)>>('CPointGeometry_C_createWith_CGeoPointWithElevation');
 late final _CPointGeometry_C_createWith_CGeoPointWithElevation = _CPointGeometry_C_createWith_CGeoPointWithElevationPtr.asFunction<_CPointGeometry Function(_CGeoPointWithElevation)>();
 
+late final _CPointGeometry_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPointGeometry_finalize');
 late final _CPointGeometry_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPointGeometry_release');
 late final _CPointGeometry_release = _CPointGeometry_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPointGeometry_retainPtr = _lookup<ffi.NativeFunction<_CPointGeometry Function(ffi.Pointer<ffi.Void>)>>('CPointGeometry_retain');
@@ -56294,6 +56581,7 @@ late final _CPolygonGeometry_cg_objectIdentifier = _CPolygonGeometry_cg_objectId
 late final _CPolygonGeometry_C_createWith_CArray_CArray_CGeoPointPtr = _lookup<ffi.NativeFunction<_CPolygonGeometry Function(_CArray_CArray_CGeoPoint)>>('CPolygonGeometry_C_createWith_CArray_CArray_CGeoPoint');
 late final _CPolygonGeometry_C_createWith_CArray_CArray_CGeoPoint = _CPolygonGeometry_C_createWith_CArray_CArray_CGeoPointPtr.asFunction<_CPolygonGeometry Function(_CArray_CArray_CGeoPoint)>();
 
+late final _CPolygonGeometry_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPolygonGeometry_finalize');
 late final _CPolygonGeometry_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPolygonGeometry_release');
 late final _CPolygonGeometry_release = _CPolygonGeometry_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPolygonGeometry_retainPtr = _lookup<ffi.NativeFunction<_CPolygonGeometry Function(ffi.Pointer<ffi.Void>)>>('CPolygonGeometry_retain');
@@ -56310,6 +56598,7 @@ late final _CComplexGeometry_cg_objectIdentifier = _CComplexGeometry_cg_objectId
 late final _CComplexGeometry_C_createWith_CArray_CGeometryPtr = _lookup<ffi.NativeFunction<_CComplexGeometry Function(_CArray_CGeometry)>>('CComplexGeometry_C_createWith_CArray_CGeometry');
 late final _CComplexGeometry_C_createWith_CArray_CGeometry = _CComplexGeometry_C_createWith_CArray_CGeometryPtr.asFunction<_CComplexGeometry Function(_CArray_CGeometry)>();
 
+late final _CComplexGeometry_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CComplexGeometry_finalize');
 late final _CComplexGeometry_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CComplexGeometry_release');
 late final _CComplexGeometry_release = _CComplexGeometry_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CComplexGeometry_retainPtr = _lookup<ffi.NativeFunction<_CComplexGeometry Function(ffi.Pointer<ffi.Void>)>>('CComplexGeometry_retain');
@@ -56358,7 +56647,9 @@ late final _CFuture_CDataReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CData,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CData, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CData_receive');
 late final _CFuture_CDataReceive = _CFuture_CDataReceivePtr.asFunction<
@@ -56366,7 +56657,9 @@ late final _CFuture_CDataReceive = _CFuture_CDataReceivePtr.asFunction<
     _CFuture_CData,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CData, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -56467,6 +56760,7 @@ late final _CCameraTransactionGuard_cg_objectIdentifierPtr = _lookup<ffi.NativeF
 late final _CCameraTransactionGuard_cg_objectIdentifier = _CCameraTransactionGuard_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CCameraTransactionGuard_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCameraTransactionGuard_finalize');
 late final _CCameraTransactionGuard_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCameraTransactionGuard_release');
 late final _CCameraTransactionGuard_release = _CCameraTransactionGuard_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCameraTransactionGuard_retainPtr = _lookup<ffi.NativeFunction<_CCameraTransactionGuard Function(ffi.Pointer<ffi.Void>)>>('CCameraTransactionGuard_retain');
@@ -56495,6 +56789,7 @@ late final _CCameraMoveControllerCpp_position_CTimeInterval = _CCameraMoveContro
 late final _CCameraMoveControllerCpp_animationTimePtr = _lookup<ffi.NativeFunction<_CTimeInterval Function(_CCameraMoveControllerCpp)>>('CCameraMoveControllerCpp_animationTime');
 late final _CCameraMoveControllerCpp_animationTime = _CCameraMoveControllerCpp_animationTimePtr.asFunction<_CTimeInterval Function(_CCameraMoveControllerCpp)>();
 
+late final _CCameraMoveControllerCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCameraMoveControllerCpp_finalize');
 late final _CCameraMoveControllerCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCameraMoveControllerCpp_release');
 late final _CCameraMoveControllerCpp_release = _CCameraMoveControllerCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCameraMoveControllerCpp_retainPtr = _lookup<ffi.NativeFunction<_CCameraMoveControllerCpp Function(ffi.Pointer<ffi.Void>)>>('CCameraMoveControllerCpp_retain');
@@ -56514,6 +56809,7 @@ late final _CNewValuesNotifier_cg_objectIdentifier = _CNewValuesNotifier_cg_obje
 late final _CNewValuesNotifier_sendNotificationPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CNewValuesNotifier)>>('CNewValuesNotifier_sendNotification');
 late final _CNewValuesNotifier_sendNotification = _CNewValuesNotifier_sendNotificationPtr.asFunction<void Function(_CNewValuesNotifier)>();
 
+late final _CNewValuesNotifier_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CNewValuesNotifier_finalize');
 late final _CNewValuesNotifier_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CNewValuesNotifier_release');
 late final _CNewValuesNotifier_release = _CNewValuesNotifier_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CNewValuesNotifier_retainPtr = _lookup<ffi.NativeFunction<_CNewValuesNotifier Function(ffi.Pointer<ffi.Void>)>>('CNewValuesNotifier_retain');
@@ -56547,6 +56843,7 @@ late final _CCustomFollowControllerCpp_tilt = _CCustomFollowControllerCpp_tiltPt
 late final _CCustomFollowControllerCpp_styleZoomPtr = _lookup<ffi.NativeFunction<_COptional_CStyleZoom Function(_CCustomFollowControllerCpp)>>('CCustomFollowControllerCpp_styleZoom');
 late final _CCustomFollowControllerCpp_styleZoom = _CCustomFollowControllerCpp_styleZoomPtr.asFunction<_COptional_CStyleZoom Function(_CCustomFollowControllerCpp)>();
 
+late final _CCustomFollowControllerCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCustomFollowControllerCpp_finalize');
 late final _CCustomFollowControllerCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCustomFollowControllerCpp_release');
 late final _CCustomFollowControllerCpp_release = _CCustomFollowControllerCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCustomFollowControllerCpp_retainPtr = _lookup<ffi.NativeFunction<_CCustomFollowControllerCpp Function(ffi.Pointer<ffi.Void>)>>('CCustomFollowControllerCpp_retain');
@@ -56581,6 +56878,7 @@ late final _CEvent_cg_objectIdentifier = _CEvent_cg_objectIdentifierPtr.asFuncti
 late final _CEvent_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CEvent)>>('CEvent_cg_getSelector');
 late final _CEvent_cg_getSelector = _CEvent_cg_getSelectorPtr.asFunction<int Function(_CEvent)>();
 
+late final _CEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CEvent_finalize');
 late final _CEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CEvent_release');
 late final _CEvent_release = _CEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CEvent_retainPtr = _lookup<ffi.NativeFunction<_CEvent Function(ffi.Pointer<ffi.Void>)>>('CEvent_retain');
@@ -56597,6 +56895,7 @@ late final _CInputEvent_cg_objectIdentifier = _CInputEvent_cg_objectIdentifierPt
 late final _CInputEvent_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CInputEvent)>>('CInputEvent_cg_getSelector');
 late final _CInputEvent_cg_getSelector = _CInputEvent_cg_getSelectorPtr.asFunction<int Function(_CInputEvent)>();
 
+late final _CInputEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CInputEvent_finalize');
 late final _CInputEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CInputEvent_release');
 late final _CInputEvent_release = _CInputEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CInputEvent_retainPtr = _lookup<ffi.NativeFunction<_CInputEvent Function(ffi.Pointer<ffi.Void>)>>('CInputEvent_retain');
@@ -56611,6 +56910,7 @@ late final _CCancelEvent_cg_objectIdentifier = _CCancelEvent_cg_objectIdentifier
 late final _CCancelEvent_C_createPtr = _lookup<ffi.NativeFunction<_CCancelEvent Function()>>('CCancelEvent_C_create');
 late final _CCancelEvent_C_create = _CCancelEvent_C_createPtr.asFunction<_CCancelEvent Function()>();
 
+late final _CCancelEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCancelEvent_finalize');
 late final _CCancelEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCancelEvent_release');
 late final _CCancelEvent_release = _CCancelEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCancelEvent_retainPtr = _lookup<ffi.NativeFunction<_CCancelEvent Function(ffi.Pointer<ffi.Void>)>>('CCancelEvent_retain');
@@ -56625,6 +56925,7 @@ late final _CDirectMapControlBeginEvent_cg_objectIdentifier = _CDirectMapControl
 late final _CDirectMapControlBeginEvent_C_createPtr = _lookup<ffi.NativeFunction<_CDirectMapControlBeginEvent Function()>>('CDirectMapControlBeginEvent_C_create');
 late final _CDirectMapControlBeginEvent_C_create = _CDirectMapControlBeginEvent_C_createPtr.asFunction<_CDirectMapControlBeginEvent Function()>();
 
+late final _CDirectMapControlBeginEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapControlBeginEvent_finalize');
 late final _CDirectMapControlBeginEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapControlBeginEvent_release');
 late final _CDirectMapControlBeginEvent_release = _CDirectMapControlBeginEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDirectMapControlBeginEvent_retainPtr = _lookup<ffi.NativeFunction<_CDirectMapControlBeginEvent Function(ffi.Pointer<ffi.Void>)>>('CDirectMapControlBeginEvent_retain');
@@ -56639,6 +56940,7 @@ late final _CDirectMapControlEndEvent_cg_objectIdentifier = _CDirectMapControlEn
 late final _CDirectMapControlEndEvent_C_createWith_CTimeIntervalPtr = _lookup<ffi.NativeFunction<_CDirectMapControlEndEvent Function(_CTimeInterval)>>('CDirectMapControlEndEvent_C_createWith_CTimeInterval');
 late final _CDirectMapControlEndEvent_C_createWith_CTimeInterval = _CDirectMapControlEndEvent_C_createWith_CTimeIntervalPtr.asFunction<_CDirectMapControlEndEvent Function(_CTimeInterval)>();
 
+late final _CDirectMapControlEndEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapControlEndEvent_finalize');
 late final _CDirectMapControlEndEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapControlEndEvent_release');
 late final _CDirectMapControlEndEvent_release = _CDirectMapControlEndEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDirectMapControlEndEvent_retainPtr = _lookup<ffi.NativeFunction<_CDirectMapControlEndEvent Function(ffi.Pointer<ffi.Void>)>>('CDirectMapControlEndEvent_retain');
@@ -56657,6 +56959,7 @@ late final _CDirectMapRotationEvent_cg_objectIdentifier = _CDirectMapRotationEve
 late final _CDirectMapRotationEvent_C_createWith_CBearing_CTimeInterval_COptional_CScreenPointPtr = _lookup<ffi.NativeFunction<_CDirectMapRotationEvent Function(_CBearing, _CTimeInterval, _COptional_CScreenPoint)>>('CDirectMapRotationEvent_C_createWith_CBearing_CTimeInterval_COptional_CScreenPoint');
 late final _CDirectMapRotationEvent_C_createWith_CBearing_CTimeInterval_COptional_CScreenPoint = _CDirectMapRotationEvent_C_createWith_CBearing_CTimeInterval_COptional_CScreenPointPtr.asFunction<_CDirectMapRotationEvent Function(_CBearing, _CTimeInterval, _COptional_CScreenPoint)>();
 
+late final _CDirectMapRotationEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapRotationEvent_finalize');
 late final _CDirectMapRotationEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapRotationEvent_release');
 late final _CDirectMapRotationEvent_release = _CDirectMapRotationEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDirectMapRotationEvent_retainPtr = _lookup<ffi.NativeFunction<_CDirectMapRotationEvent Function(ffi.Pointer<ffi.Void>)>>('CDirectMapRotationEvent_retain');
@@ -56678,6 +56981,7 @@ late final _CDirectMapScalingEvent_cg_objectIdentifier = _CDirectMapScalingEvent
 late final _CDirectMapScalingEvent_C_createWith_float_CTimeInterval_COptional_CScreenPointPtr = _lookup<ffi.NativeFunction<_CDirectMapScalingEvent Function(ffi.Float, _CTimeInterval, _COptional_CScreenPoint)>>('CDirectMapScalingEvent_C_createWith_float_CTimeInterval_COptional_CScreenPoint');
 late final _CDirectMapScalingEvent_C_createWith_float_CTimeInterval_COptional_CScreenPoint = _CDirectMapScalingEvent_C_createWith_float_CTimeInterval_COptional_CScreenPointPtr.asFunction<_CDirectMapScalingEvent Function(double, _CTimeInterval, _COptional_CScreenPoint)>();
 
+late final _CDirectMapScalingEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapScalingEvent_finalize');
 late final _CDirectMapScalingEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapScalingEvent_release');
 late final _CDirectMapScalingEvent_release = _CDirectMapScalingEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDirectMapScalingEvent_retainPtr = _lookup<ffi.NativeFunction<_CDirectMapScalingEvent Function(ffi.Pointer<ffi.Void>)>>('CDirectMapScalingEvent_retain');
@@ -56696,6 +57000,7 @@ late final _CDirectMapShiftEvent_cg_objectIdentifier = _CDirectMapShiftEvent_cg_
 late final _CDirectMapShiftEvent_C_createWith_CScreenShift_CScreenPoint_CTimeIntervalPtr = _lookup<ffi.NativeFunction<_CDirectMapShiftEvent Function(_CScreenShift, _CScreenPoint, _CTimeInterval)>>('CDirectMapShiftEvent_C_createWith_CScreenShift_CScreenPoint_CTimeInterval');
 late final _CDirectMapShiftEvent_C_createWith_CScreenShift_CScreenPoint_CTimeInterval = _CDirectMapShiftEvent_C_createWith_CScreenShift_CScreenPoint_CTimeIntervalPtr.asFunction<_CDirectMapShiftEvent Function(_CScreenShift, _CScreenPoint, _CTimeInterval)>();
 
+late final _CDirectMapShiftEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapShiftEvent_finalize');
 late final _CDirectMapShiftEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapShiftEvent_release');
 late final _CDirectMapShiftEvent_release = _CDirectMapShiftEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDirectMapShiftEvent_retainPtr = _lookup<ffi.NativeFunction<_CDirectMapShiftEvent Function(ffi.Pointer<ffi.Void>)>>('CDirectMapShiftEvent_retain');
@@ -56712,6 +57017,7 @@ late final _CDirectMapTiltEvent_cg_objectIdentifier = _CDirectMapTiltEvent_cg_ob
 late final _CDirectMapTiltEvent_C_createWith_float_CTimeIntervalPtr = _lookup<ffi.NativeFunction<_CDirectMapTiltEvent Function(ffi.Float, _CTimeInterval)>>('CDirectMapTiltEvent_C_createWith_float_CTimeInterval');
 late final _CDirectMapTiltEvent_C_createWith_float_CTimeInterval = _CDirectMapTiltEvent_C_createWith_float_CTimeIntervalPtr.asFunction<_CDirectMapTiltEvent Function(double, _CTimeInterval)>();
 
+late final _CDirectMapTiltEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapTiltEvent_finalize');
 late final _CDirectMapTiltEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDirectMapTiltEvent_release');
 late final _CDirectMapTiltEvent_release = _CDirectMapTiltEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDirectMapTiltEvent_retainPtr = _lookup<ffi.NativeFunction<_CDirectMapTiltEvent Function(ffi.Pointer<ffi.Void>)>>('CDirectMapTiltEvent_retain');
@@ -56731,6 +57037,7 @@ late final _CMapRotationBeginEvent_cg_objectIdentifier = _CMapRotationBeginEvent
 late final _CMapRotationBeginEvent_C_createWith_CMapRotationDirectionPtr = _lookup<ffi.NativeFunction<_CMapRotationBeginEvent Function(_CMapRotationDirection)>>('CMapRotationBeginEvent_C_createWith_CMapRotationDirection');
 late final _CMapRotationBeginEvent_C_createWith_CMapRotationDirection = _CMapRotationBeginEvent_C_createWith_CMapRotationDirectionPtr.asFunction<_CMapRotationBeginEvent Function(_CMapRotationDirection)>();
 
+late final _CMapRotationBeginEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapRotationBeginEvent_finalize');
 late final _CMapRotationBeginEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapRotationBeginEvent_release');
 late final _CMapRotationBeginEvent_release = _CMapRotationBeginEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapRotationBeginEvent_retainPtr = _lookup<ffi.NativeFunction<_CMapRotationBeginEvent Function(ffi.Pointer<ffi.Void>)>>('CMapRotationBeginEvent_retain');
@@ -56745,6 +57052,7 @@ late final _CMapRotationEndEvent_cg_objectIdentifier = _CMapRotationEndEvent_cg_
 late final _CMapRotationEndEvent_C_createPtr = _lookup<ffi.NativeFunction<_CMapRotationEndEvent Function()>>('CMapRotationEndEvent_C_create');
 late final _CMapRotationEndEvent_C_create = _CMapRotationEndEvent_C_createPtr.asFunction<_CMapRotationEndEvent Function()>();
 
+late final _CMapRotationEndEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapRotationEndEvent_finalize');
 late final _CMapRotationEndEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapRotationEndEvent_release');
 late final _CMapRotationEndEvent_release = _CMapRotationEndEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapRotationEndEvent_retainPtr = _lookup<ffi.NativeFunction<_CMapRotationEndEvent Function(ffi.Pointer<ffi.Void>)>>('CMapRotationEndEvent_retain');
@@ -56764,6 +57072,7 @@ late final _CMapScalingBeginEvent_cg_objectIdentifier = _CMapScalingBeginEvent_c
 late final _CMapScalingBeginEvent_C_createWith_CMapScalingDirectionPtr = _lookup<ffi.NativeFunction<_CMapScalingBeginEvent Function(_CMapScalingDirection)>>('CMapScalingBeginEvent_C_createWith_CMapScalingDirection');
 late final _CMapScalingBeginEvent_C_createWith_CMapScalingDirection = _CMapScalingBeginEvent_C_createWith_CMapScalingDirectionPtr.asFunction<_CMapScalingBeginEvent Function(_CMapScalingDirection)>();
 
+late final _CMapScalingBeginEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapScalingBeginEvent_finalize');
 late final _CMapScalingBeginEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapScalingBeginEvent_release');
 late final _CMapScalingBeginEvent_release = _CMapScalingBeginEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapScalingBeginEvent_retainPtr = _lookup<ffi.NativeFunction<_CMapScalingBeginEvent Function(ffi.Pointer<ffi.Void>)>>('CMapScalingBeginEvent_retain');
@@ -56778,6 +57087,7 @@ late final _CMapScalingEndEvent_cg_objectIdentifier = _CMapScalingEndEvent_cg_ob
 late final _CMapScalingEndEvent_C_createPtr = _lookup<ffi.NativeFunction<_CMapScalingEndEvent Function()>>('CMapScalingEndEvent_C_create');
 late final _CMapScalingEndEvent_C_create = _CMapScalingEndEvent_C_createPtr.asFunction<_CMapScalingEndEvent Function()>();
 
+late final _CMapScalingEndEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapScalingEndEvent_finalize');
 late final _CMapScalingEndEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapScalingEndEvent_release');
 late final _CMapScalingEndEvent_release = _CMapScalingEndEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapScalingEndEvent_retainPtr = _lookup<ffi.NativeFunction<_CMapScalingEndEvent Function(ffi.Pointer<ffi.Void>)>>('CMapScalingEndEvent_retain');
@@ -56797,6 +57107,7 @@ late final _CMapShiftBeginEvent_cg_objectIdentifier = _CMapShiftBeginEvent_cg_ob
 late final _CMapShiftBeginEvent_C_createWith_CMapShiftDirectionPtr = _lookup<ffi.NativeFunction<_CMapShiftBeginEvent Function(_CMapShiftDirection)>>('CMapShiftBeginEvent_C_createWith_CMapShiftDirection');
 late final _CMapShiftBeginEvent_C_createWith_CMapShiftDirection = _CMapShiftBeginEvent_C_createWith_CMapShiftDirectionPtr.asFunction<_CMapShiftBeginEvent Function(_CMapShiftDirection)>();
 
+late final _CMapShiftBeginEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapShiftBeginEvent_finalize');
 late final _CMapShiftBeginEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapShiftBeginEvent_release');
 late final _CMapShiftBeginEvent_release = _CMapShiftBeginEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapShiftBeginEvent_retainPtr = _lookup<ffi.NativeFunction<_CMapShiftBeginEvent Function(ffi.Pointer<ffi.Void>)>>('CMapShiftBeginEvent_retain');
@@ -56811,6 +57122,7 @@ late final _CMapShiftEndEvent_cg_objectIdentifier = _CMapShiftEndEvent_cg_object
 late final _CMapShiftEndEvent_C_createPtr = _lookup<ffi.NativeFunction<_CMapShiftEndEvent Function()>>('CMapShiftEndEvent_C_create');
 late final _CMapShiftEndEvent_C_create = _CMapShiftEndEvent_C_createPtr.asFunction<_CMapShiftEndEvent Function()>();
 
+late final _CMapShiftEndEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapShiftEndEvent_finalize');
 late final _CMapShiftEndEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapShiftEndEvent_release');
 late final _CMapShiftEndEvent_release = _CMapShiftEndEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapShiftEndEvent_retainPtr = _lookup<ffi.NativeFunction<_CMapShiftEndEvent Function(ffi.Pointer<ffi.Void>)>>('CMapShiftEndEvent_retain');
@@ -56825,6 +57137,7 @@ late final _CRotateMapToNorthEvent_cg_objectIdentifier = _CRotateMapToNorthEvent
 late final _CRotateMapToNorthEvent_C_createPtr = _lookup<ffi.NativeFunction<_CRotateMapToNorthEvent Function()>>('CRotateMapToNorthEvent_C_create');
 late final _CRotateMapToNorthEvent_C_create = _CRotateMapToNorthEvent_C_createPtr.asFunction<_CRotateMapToNorthEvent Function()>();
 
+late final _CRotateMapToNorthEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRotateMapToNorthEvent_finalize');
 late final _CRotateMapToNorthEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRotateMapToNorthEvent_release');
 late final _CRotateMapToNorthEvent_release = _CRotateMapToNorthEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRotateMapToNorthEvent_retainPtr = _lookup<ffi.NativeFunction<_CRotateMapToNorthEvent Function(ffi.Pointer<ffi.Void>)>>('CRotateMapToNorthEvent_retain');
@@ -56843,6 +57156,7 @@ late final _CScaleMapEvent_cg_objectIdentifier = _CScaleMapEvent_cg_objectIdenti
 late final _CScaleMapEvent_C_createWith_float_COptional_CScreenPointPtr = _lookup<ffi.NativeFunction<_CScaleMapEvent Function(ffi.Float, _COptional_CScreenPoint)>>('CScaleMapEvent_C_createWith_float_COptional_CScreenPoint');
 late final _CScaleMapEvent_C_createWith_float_COptional_CScreenPoint = _CScaleMapEvent_C_createWith_float_COptional_CScreenPointPtr.asFunction<_CScaleMapEvent Function(double, _COptional_CScreenPoint)>();
 
+late final _CScaleMapEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CScaleMapEvent_finalize');
 late final _CScaleMapEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CScaleMapEvent_release');
 late final _CScaleMapEvent_release = _CScaleMapEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CScaleMapEvent_retainPtr = _lookup<ffi.NativeFunction<_CScaleMapEvent Function(ffi.Pointer<ffi.Void>)>>('CScaleMapEvent_retain');
@@ -56889,6 +57203,7 @@ late final _CAttributes_removeAttribute_CString = _CAttributes_removeAttribute_C
 late final _CAttributes_getAttributeValue_CStringPtr = _lookup<ffi.NativeFunction<_CAttributeValue Function(_CAttributes, _CString)>>('CAttributes_getAttributeValue_CString');
 late final _CAttributes_getAttributeValue_CString = _CAttributes_getAttributeValue_CStringPtr.asFunction<_CAttributeValue Function(_CAttributes, _CString)>();
 
+late final _CAttributes_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CAttributes_finalize');
 late final _CAttributes_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CAttributes_release');
 late final _CAttributes_release = _CAttributes_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CAttributes_retainPtr = _lookup<ffi.NativeFunction<_CAttributes Function(ffi.Pointer<ffi.Void>)>>('CAttributes_retain');
@@ -56907,14 +57222,18 @@ late final _CChannel_CArray_CStringConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CChannel_CArray_CString,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CString, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CString, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CChannel_CArray_CString_connect');
 late final _CChannel_CArray_CStringConnect = _CChannel_CArray_CStringConnectPtr.asFunction<
   _CCancellable Function(
     _CChannel_CArray_CString,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CString, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CString, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 late final _CAnimationSettings_animationIndexPtr = _lookup<ffi.NativeFunction<_COptional_int32_t Function(_CAnimationSettings)>>('CAnimationSettings_animationIndex');
@@ -56946,6 +57265,7 @@ late final _CAnimationSettings_cg_objectIdentifierPtr = _lookup<ffi.NativeFuncti
 late final _CAnimationSettings_cg_objectIdentifier = _CAnimationSettings_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CAnimationSettings_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CAnimationSettings_finalize');
 late final _CAnimationSettings_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CAnimationSettings_release');
 late final _CAnimationSettings_release = _CAnimationSettings_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CAnimationSettings_retainPtr = _lookup<ffi.NativeFunction<_CAnimationSettings Function(ffi.Pointer<ffi.Void>)>>('CAnimationSettings_retain');
@@ -56970,6 +57290,7 @@ late final _CMapObject_cg_objectIdentifier = _CMapObject_cg_objectIdentifierPtr.
 late final _CMapObject_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CMapObject)>>('CMapObject_cg_getSelector');
 late final _CMapObject_cg_getSelector = _CMapObject_cg_getSelectorPtr.asFunction<int Function(_CMapObject)>();
 
+late final _CMapObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapObject_finalize');
 late final _CMapObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapObject_release');
 late final _CMapObject_release = _CMapObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapObject_retainPtr = _lookup<ffi.NativeFunction<_CMapObject Function(ffi.Pointer<ffi.Void>)>>('CMapObject_retain');
@@ -57006,6 +57327,7 @@ late final _CGeometryMapObject_cg_objectIdentifierPtr = _lookup<ffi.NativeFuncti
 late final _CGeometryMapObject_cg_objectIdentifier = _CGeometryMapObject_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CGeometryMapObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObject_finalize');
 late final _CGeometryMapObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObject_release');
 late final _CGeometryMapObject_release = _CGeometryMapObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CGeometryMapObject_retainPtr = _lookup<ffi.NativeFunction<_CGeometryMapObject Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObject_retain');
@@ -57026,14 +57348,18 @@ late final _CStatefulChannel_CGeometryConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CStatefulChannel_CGeometry,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CGeometry, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CGeometry, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CGeometry_connect');
 late final _CStatefulChannel_CGeometryConnect = _CStatefulChannel_CGeometryConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CGeometry,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CGeometry, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CGeometry, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -57049,14 +57375,18 @@ late final _CStatefulChannel_boolConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CStatefulChannel_bool,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_bool_connect');
 late final _CStatefulChannel_boolConnect = _CStatefulChannel_boolConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_bool,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 late final _CClusterObject_positionPtr = _lookup<ffi.NativeFunction<_CGeoPointWithElevation Function(_CClusterObject)>>('CClusterObject_position');
@@ -57072,6 +57402,7 @@ late final _CClusterObject_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<f
 late final _CClusterObject_cg_objectIdentifier = _CClusterObject_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CClusterObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CClusterObject_finalize');
 late final _CClusterObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CClusterObject_release');
 late final _CClusterObject_release = _CClusterObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CClusterObject_retainPtr = _lookup<ffi.NativeFunction<_CClusterObject Function(ffi.Pointer<ffi.Void>)>>('CClusterObject_retain');
@@ -57105,6 +57436,7 @@ late final _CDgisMapObject_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<f
 late final _CDgisMapObject_cg_objectIdentifier = _CDgisMapObject_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CDgisMapObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDgisMapObject_finalize');
 late final _CDgisMapObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDgisMapObject_release');
 late final _CDgisMapObject_release = _CDgisMapObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDgisMapObject_retainPtr = _lookup<ffi.NativeFunction<_CDgisMapObject Function(ffi.Pointer<ffi.Void>)>>('CDgisMapObject_retain');
@@ -57119,6 +57451,7 @@ late final _CSource_cg_objectIdentifier = _CSource_cg_objectIdentifierPtr.asFunc
 late final _CSource_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CSource)>>('CSource_cg_getSelector');
 late final _CSource_cg_getSelector = _CSource_cg_getSelectorPtr.asFunction<int Function(_CSource)>();
 
+late final _CSource_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSource_finalize');
 late final _CSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSource_release');
 late final _CSource_release = _CSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSource_retainPtr = _lookup<ffi.NativeFunction<_CSource Function(ffi.Pointer<ffi.Void>)>>('CSource_retain');
@@ -57143,6 +57476,7 @@ late final _CDgisSource_S_createDgisSource_CContext = _CDgisSource_S_createDgisS
 late final _CDgisSource_setHighlighted_CArray_CDgisObjectId_boolPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CDgisSource, _CArray_CDgisObjectId, ffi.Bool)>>('CDgisSource_setHighlighted_CArray_CDgisObjectId_bool');
 late final _CDgisSource_setHighlighted_CArray_CDgisObjectId_bool = _CDgisSource_setHighlighted_CArray_CDgisObjectId_boolPtr.asFunction<void Function(_CDgisSource, _CArray_CDgisObjectId, bool)>();
 
+late final _CDgisSource_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDgisSource_finalize');
 late final _CDgisSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDgisSource_release');
 late final _CDgisSource_release = _CDgisSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDgisSource_retainPtr = _lookup<ffi.NativeFunction<_CDgisSource Function(ffi.Pointer<ffi.Void>)>>('CDgisSource_retain');
@@ -57163,14 +57497,18 @@ late final _CStatefulChannel_CArray_CDgisObjectIdConnectPtr = _lookup<ffi.Native
   _CCancellable Function(
     _CStatefulChannel_CArray_CDgisObjectId,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CDgisObjectId, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CDgisObjectId, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CArray_CDgisObjectId_connect');
 late final _CStatefulChannel_CArray_CDgisObjectIdConnect = _CStatefulChannel_CArray_CDgisObjectIdConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CArray_CDgisObjectId,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CDgisObjectId, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CDgisObjectId, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -57180,6 +57518,7 @@ late final _CFollowController_cg_objectIdentifier = _CFollowController_cg_object
 late final _CFollowController_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CFollowController)>>('CFollowController_cg_getSelector');
 late final _CFollowController_cg_getSelector = _CFollowController_cg_getSelectorPtr.asFunction<int Function(_CFollowController)>();
 
+late final _CFollowController_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CFollowController_finalize');
 late final _CFollowController_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CFollowController_release');
 late final _CFollowController_release = _CFollowController_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CFollowController_retainPtr = _lookup<ffi.NativeFunction<_CFollowController Function(ffi.Pointer<ffi.Void>)>>('CFollowController_retain');
@@ -57210,6 +57549,7 @@ late final _CGeometryMapObjectSource_removeAndAddObjects_CArray_CGeometryMapObje
 late final _CGeometryMapObjectSource_clearPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CGeometryMapObjectSource)>>('CGeometryMapObjectSource_clear');
 late final _CGeometryMapObjectSource_clear = _CGeometryMapObjectSource_clearPtr.asFunction<void Function(_CGeometryMapObjectSource)>();
 
+late final _CGeometryMapObjectSource_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectSource_finalize');
 late final _CGeometryMapObjectSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectSource_release');
 late final _CGeometryMapObjectSource_release = _CGeometryMapObjectSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CGeometryMapObjectSource_retainPtr = _lookup<ffi.NativeFunction<_CGeometryMapObjectSource Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectSource_retain');
@@ -57237,6 +57577,7 @@ late final _CImage_cg_objectIdentifier = _CImage_cg_objectIdentifierPtr.asFuncti
 late final _CImage_C_createWith_CContext_CImageLoaderPtr = _lookup<ffi.NativeFunction<_CImage Function(_CContext, _CImageLoader)>>('CImage_C_createWith_CContext_CImageLoader');
 late final _CImage_C_createWith_CContext_CImageLoader = _CImage_C_createWith_CContext_CImageLoaderPtr.asFunction<_CImage Function(_CContext, _CImageLoader)>();
 
+late final _CImage_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CImage_finalize');
 late final _CImage_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CImage_release');
 late final _CImage_release = _CImage_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CImage_retainPtr = _lookup<ffi.NativeFunction<_CImage Function(ffi.Pointer<ffi.Void>)>>('CImage_retain');
@@ -57251,6 +57592,7 @@ late final _CImageLoaderCpp_cg_objectIdentifier = _CImageLoaderCpp_cg_objectIden
 late final _CImageLoaderCpp_loadPtr = _lookup<ffi.NativeFunction<_CImageData Function(_CImageLoaderCpp)>>('CImageLoaderCpp_load');
 late final _CImageLoaderCpp_load = _CImageLoaderCpp_loadPtr.asFunction<_CImageData Function(_CImageLoaderCpp)>();
 
+late final _CImageLoaderCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CImageLoaderCpp_finalize');
 late final _CImageLoaderCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CImageLoaderCpp_release');
 late final _CImageLoaderCpp_release = _CImageLoaderCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CImageLoaderCpp_retainPtr = _lookup<ffi.NativeFunction<_CImageLoaderCpp Function(ffi.Pointer<ffi.Void>)>>('CImageLoaderCpp_retain');
@@ -57277,6 +57619,7 @@ late final _CBearingFollowController_cg_objectIdentifier = _CBearingFollowContro
 late final _CBearingFollowController_C_createWith_CBearingSource_CTimeInterval_CBearingPtr = _lookup<ffi.NativeFunction<_CBearingFollowController Function(_CBearingSource, _CTimeInterval, _CBearing)>>('CBearingFollowController_C_createWith_CBearingSource_CTimeInterval_CBearing');
 late final _CBearingFollowController_C_createWith_CBearingSource_CTimeInterval_CBearing = _CBearingFollowController_C_createWith_CBearingSource_CTimeInterval_CBearingPtr.asFunction<_CBearingFollowController Function(_CBearingSource, _CTimeInterval, _CBearing)>();
 
+late final _CBearingFollowController_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CBearingFollowController_finalize');
 late final _CBearingFollowController_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CBearingFollowController_release');
 late final _CBearingFollowController_release = _CBearingFollowController_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CBearingFollowController_retainPtr = _lookup<ffi.NativeFunction<_CBearingFollowController Function(ffi.Pointer<ffi.Void>)>>('CBearingFollowController_retain');
@@ -57291,6 +57634,7 @@ late final _CCoordinatesFollowController_cg_objectIdentifier = _CCoordinatesFoll
 late final _CCoordinatesFollowController_C_createWith_CTimeInterval_CMeterPtr = _lookup<ffi.NativeFunction<_CCoordinatesFollowController Function(_CTimeInterval, _CMeter)>>('CCoordinatesFollowController_C_createWith_CTimeInterval_CMeter');
 late final _CCoordinatesFollowController_C_createWith_CTimeInterval_CMeter = _CCoordinatesFollowController_C_createWith_CTimeInterval_CMeterPtr.asFunction<_CCoordinatesFollowController Function(_CTimeInterval, _CMeter)>();
 
+late final _CCoordinatesFollowController_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCoordinatesFollowController_finalize');
 late final _CCoordinatesFollowController_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCoordinatesFollowController_release');
 late final _CCoordinatesFollowController_release = _CCoordinatesFollowController_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCoordinatesFollowController_retainPtr = _lookup<ffi.NativeFunction<_CCoordinatesFollowController Function(ffi.Pointer<ffi.Void>)>>('CCoordinatesFollowController_retain');
@@ -57315,6 +57659,7 @@ late final _CModelData_cg_objectIdentifier = _CModelData_cg_objectIdentifierPtr.
 late final _CModelData_C_createWith_CContext_CModelDataLoaderPtr = _lookup<ffi.NativeFunction<_CModelData Function(_CContext, _CModelDataLoader)>>('CModelData_C_createWith_CContext_CModelDataLoader');
 late final _CModelData_C_createWith_CContext_CModelDataLoader = _CModelData_C_createWith_CContext_CModelDataLoaderPtr.asFunction<_CModelData Function(_CContext, _CModelDataLoader)>();
 
+late final _CModelData_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CModelData_finalize');
 late final _CModelData_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CModelData_release');
 late final _CModelData_release = _CModelData_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CModelData_retainPtr = _lookup<ffi.NativeFunction<_CModelData Function(ffi.Pointer<ffi.Void>)>>('CModelData_retain');
@@ -57329,6 +57674,7 @@ late final _CModelDataLoaderCpp_cg_objectIdentifier = _CModelDataLoaderCpp_cg_ob
 late final _CModelDataLoaderCpp_loadPtr = _lookup<ffi.NativeFunction<_CData Function(_CModelDataLoaderCpp)>>('CModelDataLoaderCpp_load');
 late final _CModelDataLoaderCpp_load = _CModelDataLoaderCpp_loadPtr.asFunction<_CData Function(_CModelDataLoaderCpp)>();
 
+late final _CModelDataLoaderCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CModelDataLoaderCpp_finalize');
 late final _CModelDataLoaderCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CModelDataLoaderCpp_release');
 late final _CModelDataLoaderCpp_release = _CModelDataLoaderCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CModelDataLoaderCpp_retainPtr = _lookup<ffi.NativeFunction<_CModelDataLoaderCpp Function(ffi.Pointer<ffi.Void>)>>('CModelDataLoaderCpp_retain');
@@ -57352,6 +57698,7 @@ late final _CMyLocationMapObject_cg_objectIdentifier = _CMyLocationMapObject_cg_
 late final _CMyLocationMapObject_setModelData_COptional_CModelDataPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMyLocationMapObject, _COptional_CModelData)>>('CMyLocationMapObject_setModelData_COptional_CModelData');
 late final _CMyLocationMapObject_setModelData_COptional_CModelData = _CMyLocationMapObject_setModelData_COptional_CModelDataPtr.asFunction<void Function(_CMyLocationMapObject, _COptional_CModelData)>();
 
+late final _CMyLocationMapObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMyLocationMapObject_finalize');
 late final _CMyLocationMapObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMyLocationMapObject_release');
 late final _CMyLocationMapObject_release = _CMyLocationMapObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMyLocationMapObject_retainPtr = _lookup<ffi.NativeFunction<_CMyLocationMapObject Function(ffi.Pointer<ffi.Void>)>>('CMyLocationMapObject_retain');
@@ -57374,6 +57721,7 @@ late final _CMyLocationMapObjectSource_cg_objectIdentifier = _CMyLocationMapObje
 late final _CMyLocationMapObjectSource_C_createWith_CContext_CMyLocationControllerSettings_CMyLocationMapObjectMarkerTypePtr = _lookup<ffi.NativeFunction<_CMyLocationMapObjectSource Function(_CContext, _CMyLocationControllerSettings, _CMyLocationMapObjectMarkerType)>>('CMyLocationMapObjectSource_C_createWith_CContext_CMyLocationControllerSettings_CMyLocationMapObjectMarkerType');
 late final _CMyLocationMapObjectSource_C_createWith_CContext_CMyLocationControllerSettings_CMyLocationMapObjectMarkerType = _CMyLocationMapObjectSource_C_createWith_CContext_CMyLocationControllerSettings_CMyLocationMapObjectMarkerTypePtr.asFunction<_CMyLocationMapObjectSource Function(_CContext, _CMyLocationControllerSettings, _CMyLocationMapObjectMarkerType)>();
 
+late final _CMyLocationMapObjectSource_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMyLocationMapObjectSource_finalize');
 late final _CMyLocationMapObjectSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMyLocationMapObjectSource_release');
 late final _CMyLocationMapObjectSource_release = _CMyLocationMapObjectSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMyLocationMapObjectSource_retainPtr = _lookup<ffi.NativeFunction<_CMyLocationMapObjectSource Function(ffi.Pointer<ffi.Void>)>>('CMyLocationMapObjectSource_retain');
@@ -57392,6 +57740,7 @@ late final _CRoadEventMapObject_cg_objectIdentifierPtr = _lookup<ffi.NativeFunct
 late final _CRoadEventMapObject_cg_objectIdentifier = _CRoadEventMapObject_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CRoadEventMapObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventMapObject_finalize');
 late final _CRoadEventMapObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventMapObject_release');
 late final _CRoadEventMapObject_release = _CRoadEventMapObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRoadEventMapObject_retainPtr = _lookup<ffi.NativeFunction<_CRoadEventMapObject Function(ffi.Pointer<ffi.Void>)>>('CRoadEventMapObject_retain');
@@ -57435,6 +57784,7 @@ late final _CRoadEvent_cg_objectIdentifier = _CRoadEvent_cg_objectIdentifierPtr.
 late final _CRoadEvent_photosPtr = _lookup<ffi.NativeFunction<_CFuture_CArray_CRoadEventPhoto Function(_CRoadEvent)>>('CRoadEvent_photos');
 late final _CRoadEvent_photos = _CRoadEvent_photosPtr.asFunction<_CFuture_CArray_CRoadEventPhoto Function(_CRoadEvent)>();
 
+late final _CRoadEvent_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEvent_finalize');
 late final _CRoadEvent_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEvent_release');
 late final _CRoadEvent_release = _CRoadEvent_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRoadEvent_retainPtr = _lookup<ffi.NativeFunction<_CRoadEvent Function(ffi.Pointer<ffi.Void>)>>('CRoadEvent_retain');
@@ -57496,7 +57846,9 @@ late final _CFuture_CArray_CRoadEventPhotoReceivePtr = _lookup<ffi.NativeFunctio
     _CFuture_CArray_CRoadEventPhoto,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CRoadEventPhoto, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CArray_CRoadEventPhoto_receive');
 late final _CFuture_CArray_CRoadEventPhotoReceive = _CFuture_CArray_CRoadEventPhotoReceivePtr.asFunction<
@@ -57504,7 +57856,9 @@ late final _CFuture_CArray_CRoadEventPhotoReceive = _CFuture_CArray_CRoadEventPh
     _CFuture_CArray_CRoadEventPhoto,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CRoadEventPhoto, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -57537,6 +57891,7 @@ late final _CRoadEventPhoto_previewUrl_CScreenSize = _CRoadEventPhoto_previewUrl
 late final _CRoadEventPhoto_reportPtr = _lookup<ffi.NativeFunction<_CFuture_CActionResult Function(_CRoadEventPhoto)>>('CRoadEventPhoto_report');
 late final _CRoadEventPhoto_report = _CRoadEventPhoto_reportPtr.asFunction<_CFuture_CActionResult Function(_CRoadEventPhoto)>();
 
+late final _CRoadEventPhoto_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventPhoto_finalize');
 late final _CRoadEventPhoto_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventPhoto_release');
 late final _CRoadEventPhoto_release = _CRoadEventPhoto_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRoadEventPhoto_retainPtr = _lookup<ffi.NativeFunction<_CRoadEventPhoto Function(ffi.Pointer<ffi.Void>)>>('CRoadEventPhoto_retain');
@@ -57559,7 +57914,9 @@ late final _CFuture_CActionResultReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CActionResult,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CActionResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CActionResult_receive');
 late final _CFuture_CActionResultReceive = _CFuture_CActionResultReceivePtr.asFunction<
@@ -57567,7 +57924,9 @@ late final _CFuture_CActionResultReceive = _CFuture_CActionResultReceivePtr.asFu
     _CFuture_CActionResult,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CActionResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -57577,6 +57936,7 @@ late final _CRemover_cg_objectIdentifier = _CRemover_cg_objectIdentifierPtr.asFu
 late final _CRemover_removePtr = _lookup<ffi.NativeFunction<_CFuture_CActionResult Function(_CRemover)>>('CRemover_remove');
 late final _CRemover_remove = _CRemover_removePtr.asFunction<_CFuture_CActionResult Function(_CRemover)>();
 
+late final _CRemover_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRemover_finalize');
 late final _CRemover_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRemover_release');
 late final _CRemover_release = _CRemover_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRemover_retainPtr = _lookup<ffi.NativeFunction<_CRemover Function(ffi.Pointer<ffi.Void>)>>('CRemover_retain');
@@ -57623,6 +57983,7 @@ late final _CRoadEventAction_set = _CRoadEventAction_setPtr.asFunction<_CFuture_
 late final _CRoadEventAction_resetPtr = _lookup<ffi.NativeFunction<_CFuture_CActionResult Function(_CRoadEventAction)>>('CRoadEventAction_reset');
 late final _CRoadEventAction_reset = _CRoadEventAction_resetPtr.asFunction<_CFuture_CActionResult Function(_CRoadEventAction)>();
 
+late final _CRoadEventAction_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventAction_finalize');
 late final _CRoadEventAction_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventAction_release');
 late final _CRoadEventAction_release = _CRoadEventAction_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRoadEventAction_retainPtr = _lookup<ffi.NativeFunction<_CRoadEventAction Function(ffi.Pointer<ffi.Void>)>>('CRoadEventAction_retain');
@@ -57643,14 +58004,18 @@ late final _CStatefulChannel_CRoadEventActionInfoConnectPtr = _lookup<ffi.Native
   _CCancellable Function(
     _CStatefulChannel_CRoadEventActionInfo,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CRoadEventActionInfo, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CRoadEventActionInfo, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CRoadEventActionInfo_connect');
 late final _CStatefulChannel_CRoadEventActionInfoConnect = _CStatefulChannel_CRoadEventActionInfoConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CRoadEventActionInfo,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CRoadEventActionInfo, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CRoadEventActionInfo, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -57670,6 +58035,7 @@ late final _CStyle_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Point
 late final _CStyle_cg_objectIdentifier = _CStyle_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CStyle_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyle_finalize');
 late final _CStyle_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyle_release');
 late final _CStyle_release = _CStyle_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CStyle_retainPtr = _lookup<ffi.NativeFunction<_CStyle Function(ffi.Pointer<ffi.Void>)>>('CStyle_retain');
@@ -57688,6 +58054,7 @@ late final _CStyleZoomFollowController_setStyleZoomRange_CStyleZoom_CStyleZoom =
 late final _CStyleZoomFollowController_C_createWith_CTimeIntervalPtr = _lookup<ffi.NativeFunction<_CResult_CStyleZoomFollowController Function(_CTimeInterval)>>('CStyleZoomFollowController_C_createWith_CTimeInterval');
 late final _CStyleZoomFollowController_C_createWith_CTimeInterval = _CStyleZoomFollowController_C_createWith_CTimeIntervalPtr.asFunction<_CResult_CStyleZoomFollowController Function(_CTimeInterval)>();
 
+late final _CStyleZoomFollowController_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyleZoomFollowController_finalize');
 late final _CStyleZoomFollowController_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyleZoomFollowController_release');
 late final _CStyleZoomFollowController_release = _CStyleZoomFollowController_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CStyleZoomFollowController_retainPtr = _lookup<ffi.NativeFunction<_CStyleZoomFollowController Function(ffi.Pointer<ffi.Void>)>>('CStyleZoomFollowController_retain');
@@ -57705,6 +58072,7 @@ late final _CStyleZoomToTiltRelationCpp_cg_objectIdentifier = _CStyleZoomToTiltR
 late final _CStyleZoomToTiltRelationCpp_styleZoomToTilt_CStyleZoomPtr = _lookup<ffi.NativeFunction<_CTilt Function(_CStyleZoomToTiltRelationCpp, _CStyleZoom)>>('CStyleZoomToTiltRelationCpp_styleZoomToTilt_CStyleZoom');
 late final _CStyleZoomToTiltRelationCpp_styleZoomToTilt_CStyleZoom = _CStyleZoomToTiltRelationCpp_styleZoomToTilt_CStyleZoomPtr.asFunction<_CTilt Function(_CStyleZoomToTiltRelationCpp, _CStyleZoom)>();
 
+late final _CStyleZoomToTiltRelationCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyleZoomToTiltRelationCpp_finalize');
 late final _CStyleZoomToTiltRelationCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyleZoomToTiltRelationCpp_release');
 late final _CStyleZoomToTiltRelationCpp_release = _CStyleZoomToTiltRelationCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CStyleZoomToTiltRelationCpp_retainPtr = _lookup<ffi.NativeFunction<_CStyleZoomToTiltRelationCpp Function(ffi.Pointer<ffi.Void>)>>('CStyleZoomToTiltRelationCpp_retain');
@@ -57724,6 +58092,7 @@ late final _CTiltFollowController_cg_objectIdentifier = _CTiltFollowController_c
 late final _CTiltFollowController_C_createWith_CStyleZoomToTiltRelationPtr = _lookup<ffi.NativeFunction<_CTiltFollowController Function(_CStyleZoomToTiltRelation)>>('CTiltFollowController_C_createWith_CStyleZoomToTiltRelation');
 late final _CTiltFollowController_C_createWith_CStyleZoomToTiltRelation = _CTiltFollowController_C_createWith_CStyleZoomToTiltRelationPtr.asFunction<_CTiltFollowController Function(_CStyleZoomToTiltRelation)>();
 
+late final _CTiltFollowController_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTiltFollowController_finalize');
 late final _CTiltFollowController_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTiltFollowController_release');
 late final _CTiltFollowController_release = _CTiltFollowController_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CTiltFollowController_retainPtr = _lookup<ffi.NativeFunction<_CTiltFollowController Function(ffi.Pointer<ffi.Void>)>>('CTiltFollowController_retain');
@@ -57738,6 +58107,7 @@ late final _CTrafficSource_cg_objectIdentifier = _CTrafficSource_cg_objectIdenti
 late final _CTrafficSource_C_createWith_CContextPtr = _lookup<ffi.NativeFunction<_CTrafficSource Function(_CContext)>>('CTrafficSource_C_createWith_CContext');
 late final _CTrafficSource_C_createWith_CContext = _CTrafficSource_C_createWith_CContextPtr.asFunction<_CTrafficSource Function(_CContext)>();
 
+late final _CTrafficSource_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTrafficSource_finalize');
 late final _CTrafficSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTrafficSource_release');
 late final _CTrafficSource_release = _CTrafficSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CTrafficSource_retainPtr = _lookup<ffi.NativeFunction<_CTrafficSource Function(ffi.Pointer<ffi.Void>)>>('CTrafficSource_retain');
@@ -57756,6 +58126,7 @@ late final _CRoadEventFilterCpp_cg_objectIdentifier = _CRoadEventFilterCpp_cg_ob
 late final _CRoadEventFilterCpp_passes_CRoadEventFilterDataPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CRoadEventFilterCpp, _CRoadEventFilterData)>>('CRoadEventFilterCpp_passes_CRoadEventFilterData');
 late final _CRoadEventFilterCpp_passes_CRoadEventFilterData = _CRoadEventFilterCpp_passes_CRoadEventFilterDataPtr.asFunction<bool Function(_CRoadEventFilterCpp, _CRoadEventFilterData)>();
 
+late final _CRoadEventFilterCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventFilterCpp_finalize');
 late final _CRoadEventFilterCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventFilterCpp_release');
 late final _CRoadEventFilterCpp_release = _CRoadEventFilterCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRoadEventFilterCpp_retainPtr = _lookup<ffi.NativeFunction<_CRoadEventFilterCpp Function(ffi.Pointer<ffi.Void>)>>('CRoadEventFilterCpp_retain');
@@ -57785,6 +58156,7 @@ late final _CRoadEventSource_setHighlighted_CArray_CDgisObjectId_bool = _CRoadEv
 late final _CRoadEventSource_C_createWith_CContextPtr = _lookup<ffi.NativeFunction<_CResult_CRoadEventSource Function(_CContext)>>('CRoadEventSource_C_createWith_CContext');
 late final _CRoadEventSource_C_createWith_CContext = _CRoadEventSource_C_createWith_CContextPtr.asFunction<_CResult_CRoadEventSource Function(_CContext)>();
 
+late final _CRoadEventSource_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventSource_finalize');
 late final _CRoadEventSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventSource_release');
 late final _CRoadEventSource_release = _CRoadEventSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRoadEventSource_retainPtr = _lookup<ffi.NativeFunction<_CRoadEventSource Function(ffi.Pointer<ffi.Void>)>>('CRoadEventSource_retain');
@@ -57808,6 +58180,7 @@ late final _CDefaultRoadEventFilter_cg_objectIdentifier = _CDefaultRoadEventFilt
 late final _CDefaultRoadEventFilter_S_create_CContext_COptional_COptionSet_CRoadEventDisplayCategory_COptional_CTimeIntervalPtr = _lookup<ffi.NativeFunction<_CRoadEventFilter Function(_CContext, _COptional_COptionSet_CRoadEventDisplayCategory, _COptional_CTimeInterval)>>('CDefaultRoadEventFilter_S_create_CContext_COptional_COptionSet_CRoadEventDisplayCategory_COptional_CTimeInterval');
 late final _CDefaultRoadEventFilter_S_create_CContext_COptional_COptionSet_CRoadEventDisplayCategory_COptional_CTimeInterval = _CDefaultRoadEventFilter_S_create_CContext_COptional_COptionSet_CRoadEventDisplayCategory_COptional_CTimeIntervalPtr.asFunction<_CRoadEventFilter Function(_CContext, _COptional_COptionSet_CRoadEventDisplayCategory, _COptional_CTimeInterval)>();
 
+late final _CDefaultRoadEventFilter_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDefaultRoadEventFilter_finalize');
 late final _CDefaultRoadEventFilter_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CDefaultRoadEventFilter_release');
 late final _CDefaultRoadEventFilter_release = _CDefaultRoadEventFilter_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CDefaultRoadEventFilter_retainPtr = _lookup<ffi.NativeFunction<_CDefaultRoadEventFilter Function(ffi.Pointer<ffi.Void>)>>('CDefaultRoadEventFilter_retain');
@@ -57924,6 +58297,7 @@ late final _CGeometryMapObjectBuilder_createObject = _CGeometryMapObjectBuilder_
 late final _CGeometryMapObjectBuilder_C_createPtr = _lookup<ffi.NativeFunction<_CGeometryMapObjectBuilder Function()>>('CGeometryMapObjectBuilder_C_create');
 late final _CGeometryMapObjectBuilder_C_create = _CGeometryMapObjectBuilder_C_createPtr.asFunction<_CGeometryMapObjectBuilder Function()>();
 
+late final _CGeometryMapObjectBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectBuilder_finalize');
 late final _CGeometryMapObjectBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectBuilder_release');
 late final _CGeometryMapObjectBuilder_release = _CGeometryMapObjectBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CGeometryMapObjectBuilder_retainPtr = _lookup<ffi.NativeFunction<_CGeometryMapObjectBuilder Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectBuilder_retain');
@@ -58022,6 +58396,7 @@ late final _CBaseCamera_startTransaction = _CBaseCamera_startTransactionPtr.asFu
 late final _CBaseCamera_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CBaseCamera)>>('CBaseCamera_cg_getSelector');
 late final _CBaseCamera_cg_getSelector = _CBaseCamera_cg_getSelectorPtr.asFunction<int Function(_CBaseCamera)>();
 
+late final _CBaseCamera_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CBaseCamera_finalize');
 late final _CBaseCamera_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CBaseCamera_release');
 late final _CBaseCamera_release = _CBaseCamera_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CBaseCamera_retainPtr = _lookup<ffi.NativeFunction<_CBaseCamera Function(ffi.Pointer<ffi.Void>)>>('CBaseCamera_retain');
@@ -58046,6 +58421,7 @@ late final _CProjection_distanceOnMap_CScreenPoint_CScreenPoint = _CProjection_d
 late final _CProjection_distanceOnScreen_CGeoPoint_CGeoPointPtr = _lookup<ffi.NativeFunction<_COptional_CLogicalPixel Function(_CProjection, _CGeoPoint, _CGeoPoint)>>('CProjection_distanceOnScreen_CGeoPoint_CGeoPoint');
 late final _CProjection_distanceOnScreen_CGeoPoint_CGeoPoint = _CProjection_distanceOnScreen_CGeoPoint_CGeoPointPtr.asFunction<_COptional_CLogicalPixel Function(_CProjection, _CGeoPoint, _CGeoPoint)>();
 
+late final _CProjection_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CProjection_finalize');
 late final _CProjection_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CProjection_release');
 late final _CProjection_release = _CProjection_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CProjection_retainPtr = _lookup<ffi.NativeFunction<_CProjection Function(ffi.Pointer<ffi.Void>)>>('CProjection_retain');
@@ -58076,14 +58452,18 @@ late final _CChannel_CCameraChangeConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CChannel_CCameraChange,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraChange, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraChange, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CChannel_CCameraChange_connect');
 late final _CChannel_CCameraChangeConnect = _CChannel_CCameraChangeConnectPtr.asFunction<
   _CCancellable Function(
     _CChannel_CCameraChange,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraChange, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraChange, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58128,6 +58508,7 @@ late final _CSimpleMapObject_cg_objectIdentifier = _CSimpleMapObject_cg_objectId
 late final _CSimpleMapObject_cg_getSelectorPtr = _lookup<ffi.NativeFunction<ffi.Uint64 Function(_CSimpleMapObject)>>('CSimpleMapObject_cg_getSelector');
 late final _CSimpleMapObject_cg_getSelector = _CSimpleMapObject_cg_getSelectorPtr.asFunction<int Function(_CSimpleMapObject)>();
 
+late final _CSimpleMapObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSimpleMapObject_finalize');
 late final _CSimpleMapObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSimpleMapObject_release');
 late final _CSimpleMapObject_release = _CSimpleMapObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSimpleMapObject_retainPtr = _lookup<ffi.NativeFunction<_CSimpleMapObject Function(ffi.Pointer<ffi.Void>)>>('CSimpleMapObject_retain');
@@ -58182,6 +58563,7 @@ late final _CGeometryMapObjectSourceBuilder_createSource = _CGeometryMapObjectSo
 late final _CGeometryMapObjectSourceBuilder_C_createWith_CContextPtr = _lookup<ffi.NativeFunction<_CGeometryMapObjectSourceBuilder Function(_CContext)>>('CGeometryMapObjectSourceBuilder_C_createWith_CContext');
 late final _CGeometryMapObjectSourceBuilder_C_createWith_CContext = _CGeometryMapObjectSourceBuilder_C_createWith_CContextPtr.asFunction<_CGeometryMapObjectSourceBuilder Function(_CContext)>();
 
+late final _CGeometryMapObjectSourceBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectSourceBuilder_finalize');
 late final _CGeometryMapObjectSourceBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectSourceBuilder_release');
 late final _CGeometryMapObjectSourceBuilder_release = _CGeometryMapObjectSourceBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CGeometryMapObjectSourceBuilder_retainPtr = _lookup<ffi.NativeFunction<_CGeometryMapObjectSourceBuilder Function(ffi.Pointer<ffi.Void>)>>('CGeometryMapObjectSourceBuilder_retain');
@@ -58227,6 +58609,7 @@ late final _CIndoorBuilding_cg_objectIdentifier = _CIndoorBuilding_cg_objectIden
 late final _CIndoorBuilding_linkedWith_CIndoorBuildingPtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CIndoorBuilding, _CIndoorBuilding)>>('CIndoorBuilding_linkedWith_CIndoorBuilding');
 late final _CIndoorBuilding_linkedWith_CIndoorBuilding = _CIndoorBuilding_linkedWith_CIndoorBuildingPtr.asFunction<bool Function(_CIndoorBuilding, _CIndoorBuilding)>();
 
+late final _CIndoorBuilding_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CIndoorBuilding_finalize');
 late final _CIndoorBuilding_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CIndoorBuilding_release');
 late final _CIndoorBuilding_release = _CIndoorBuilding_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CIndoorBuilding_retainPtr = _lookup<ffi.NativeFunction<_CIndoorBuilding Function(ffi.Pointer<ffi.Void>)>>('CIndoorBuilding_retain');
@@ -58247,14 +58630,18 @@ late final _CStatefulChannel_uint64_tConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CStatefulChannel_uint64_t,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Uint64, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Uint64, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_uint64_t_connect');
 late final _CStatefulChannel_uint64_tConnect = _CStatefulChannel_uint64_tConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_uint64_t,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Uint64, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Uint64, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58270,14 +58657,18 @@ late final _CStatefulChannel_CIndoorBuildingModeConnectPtr = _lookup<ffi.NativeF
   _CCancellable Function(
     _CStatefulChannel_CIndoorBuildingMode,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CIndoorBuildingMode, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CIndoorBuildingMode, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CIndoorBuildingMode_connect');
 late final _CStatefulChannel_CIndoorBuildingModeConnect = _CStatefulChannel_CIndoorBuildingModeConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CIndoorBuildingMode,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CIndoorBuildingMode, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CIndoorBuildingMode, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58294,6 +58685,7 @@ late final _CIndoorManager_cg_objectIdentifier = _CIndoorManager_cg_objectIdenti
 late final _CIndoorManager_setIndoorState_CIndoorManagerStatePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CIndoorManager, _CIndoorManagerState)>>('CIndoorManager_setIndoorState_CIndoorManagerState');
 late final _CIndoorManager_setIndoorState_CIndoorManagerState = _CIndoorManager_setIndoorState_CIndoorManagerStatePtr.asFunction<void Function(_CIndoorManager, _CIndoorManagerState)>();
 
+late final _CIndoorManager_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CIndoorManager_finalize');
 late final _CIndoorManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CIndoorManager_release');
 late final _CIndoorManager_release = _CIndoorManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CIndoorManager_retainPtr = _lookup<ffi.NativeFunction<_CIndoorManager Function(ffi.Pointer<ffi.Void>)>>('CIndoorManager_retain');
@@ -58314,14 +58706,18 @@ late final _CStatefulChannel_COptional_CIndoorBuildingConnectPtr = _lookup<ffi.N
   _CCancellable Function(
     _CStatefulChannel_COptional_CIndoorBuilding,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CIndoorBuilding, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CIndoorBuilding, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_COptional_CIndoorBuilding_connect');
 late final _CStatefulChannel_COptional_CIndoorBuildingConnect = _CStatefulChannel_COptional_CIndoorBuildingConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_COptional_CIndoorBuilding,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CIndoorBuilding, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CIndoorBuilding, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58353,6 +58749,7 @@ late final _CIndoorControlModel_isLevelMarked_uint64_t = _CIndoorControlModel_is
 late final _CIndoorControlModel_C_createWith_CMapPtr = _lookup<ffi.NativeFunction<_CIndoorControlModel Function(_CMap)>>('CIndoorControlModel_C_createWith_CMap');
 late final _CIndoorControlModel_C_createWith_CMap = _CIndoorControlModel_C_createWith_CMapPtr.asFunction<_CIndoorControlModel Function(_CMap)>();
 
+late final _CIndoorControlModel_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CIndoorControlModel_finalize');
 late final _CIndoorControlModel_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CIndoorControlModel_release');
 late final _CIndoorControlModel_release = _CIndoorControlModel_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CIndoorControlModel_retainPtr = _lookup<ffi.NativeFunction<_CIndoorControlModel Function(ffi.Pointer<ffi.Void>)>>('CIndoorControlModel_retain');
@@ -58373,14 +58770,18 @@ late final _CStatefulChannel_COptional_uint64_tConnectPtr = _lookup<ffi.NativeFu
   _CCancellable Function(
     _CStatefulChannel_COptional_uint64_t,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_uint64_t, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_uint64_t, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_COptional_uint64_t_connect');
 late final _CStatefulChannel_COptional_uint64_tConnect = _CStatefulChannel_COptional_uint64_tConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_COptional_uint64_t,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_uint64_t, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_uint64_t, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58409,14 +58810,18 @@ late final _CStatefulChannel_CArray_CStringConnectPtr = _lookup<ffi.NativeFuncti
   _CCancellable Function(
     _CStatefulChannel_CArray_CString,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CString, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CString, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CArray_CString_connect');
 late final _CStatefulChannel_CArray_CStringConnect = _CStatefulChannel_CArray_CStringConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CArray_CString,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CString, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CString, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 late final _CMap_idPtr = _lookup<ffi.NativeFunction<_CMapId Function(_CMap)>>('CMap_id');
@@ -58516,6 +58921,7 @@ late final _CMap_setIsPlatformDarkMode_bool = _CMap_setIsPlatformDarkMode_boolPt
 late final _CMap_getMapObject_CScreenPoint_CScreenDistancePtr = _lookup<ffi.NativeFunction<_CFuture_COptional_CRenderedObjectInfo Function(_CMap, _CScreenPoint, _CScreenDistance)>>('CMap_getMapObject_CScreenPoint_CScreenDistance');
 late final _CMap_getMapObject_CScreenPoint_CScreenDistance = _CMap_getMapObject_CScreenPoint_CScreenDistancePtr.asFunction<_CFuture_COptional_CRenderedObjectInfo Function(_CMap, _CScreenPoint, _CScreenDistance)>();
 
+late final _CMap_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMap_finalize');
 late final _CMap_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMap_release');
 late final _CMap_release = _CMap_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMap_retainPtr = _lookup<ffi.NativeFunction<_CMap Function(ffi.Pointer<ffi.Void>)>>('CMap_retain');
@@ -58550,6 +58956,7 @@ late final _CCamera_moveWithController_CCameraMoveController = _CCamera_moveWith
 late final _CCamera_setCustomFollowController_CCustomFollowControllerPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CCamera, _CCustomFollowController)>>('CCamera_setCustomFollowController_CCustomFollowController');
 late final _CCamera_setCustomFollowController_CCustomFollowController = _CCamera_setCustomFollowController_CCustomFollowControllerPtr.asFunction<void Function(_CCamera, _CCustomFollowController)>();
 
+late final _CCamera_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCamera_finalize');
 late final _CCamera_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCamera_release');
 late final _CCamera_release = _CCamera_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCamera_retainPtr = _lookup<ffi.NativeFunction<_CCamera Function(ffi.Pointer<ffi.Void>)>>('CCamera_retain');
@@ -58569,7 +58976,9 @@ late final _CFuture_CCameraAnimatedMoveResultReceivePtr = _lookup<ffi.NativeFunc
     _CFuture_CCameraAnimatedMoveResult,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraAnimatedMoveResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CCameraAnimatedMoveResult_receive');
 late final _CFuture_CCameraAnimatedMoveResultReceive = _CFuture_CCameraAnimatedMoveResultReceivePtr.asFunction<
@@ -58577,7 +58986,9 @@ late final _CFuture_CCameraAnimatedMoveResultReceive = _CFuture_CCameraAnimatedM
     _CFuture_CCameraAnimatedMoveResult,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraAnimatedMoveResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58593,14 +59004,18 @@ late final _CStatefulChannel_CMapDataLoadingStateConnectPtr = _lookup<ffi.Native
   _CCancellable Function(
     _CStatefulChannel_CMapDataLoadingState,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapDataLoadingState, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapDataLoadingState, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CMapDataLoadingState_connect');
 late final _CStatefulChannel_CMapDataLoadingStateConnect = _CStatefulChannel_CMapDataLoadingStateConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CMapDataLoadingState,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapDataLoadingState, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapDataLoadingState, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58616,14 +59031,18 @@ late final _CStatefulChannel_CStyleConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CStatefulChannel_CStyle,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CStyle, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CStyle, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CStyle_connect');
 late final _CStatefulChannel_CStyleConnect = _CStatefulChannel_CStyleConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CStyle,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CStyle, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CStyle, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58639,14 +59058,18 @@ late final _CStatefulChannel_floatConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CStatefulChannel_float,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Float, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Float, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_float_connect');
 late final _CStatefulChannel_floatConnect = _CStatefulChannel_floatConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_float,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Float, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Float, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58674,7 +59097,9 @@ late final _CFuture_CArray_CRenderedObjectInfoReceivePtr = _lookup<ffi.NativeFun
     _CFuture_CArray_CRenderedObjectInfo,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CArray_CRenderedObjectInfo_receive');
 late final _CFuture_CArray_CRenderedObjectInfoReceive = _CFuture_CArray_CRenderedObjectInfoReceivePtr.asFunction<
@@ -58682,7 +59107,9 @@ late final _CFuture_CArray_CRenderedObjectInfoReceive = _CFuture_CArray_CRendere
     _CFuture_CArray_CRenderedObjectInfo,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58715,14 +59142,18 @@ late final _CStatefulChannel_CMapVisibilityStateConnectPtr = _lookup<ffi.NativeF
   _CCancellable Function(
     _CStatefulChannel_CMapVisibilityState,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapVisibilityState, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapVisibilityState, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CMapVisibilityState_connect');
 late final _CStatefulChannel_CMapVisibilityStateConnect = _CStatefulChannel_CMapVisibilityStateConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CMapVisibilityState,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapVisibilityState, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapVisibilityState, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58736,14 +59167,18 @@ late final _CChannel_boolConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CChannel_bool,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CChannel_bool_connect');
 late final _CChannel_boolConnect = _CChannel_boolConnectPtr.asFunction<
   _CCancellable Function(
     _CChannel_bool,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58759,14 +59194,18 @@ late final _CStatefulChannel_CProductTypeConnectPtr = _lookup<ffi.NativeFunction
   _CCancellable Function(
     _CStatefulChannel_CProductType,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CProductType, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CProductType, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CProductType_connect');
 late final _CStatefulChannel_CProductTypeConnect = _CStatefulChannel_CProductTypeConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CProductType,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CProductType, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CProductType, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58785,14 +59224,18 @@ late final _CStatefulChannel_COptional_CGraphicsPresetConnectPtr = _lookup<ffi.N
   _CCancellable Function(
     _CStatefulChannel_COptional_CGraphicsPreset,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CGraphicsPreset, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CGraphicsPreset, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_COptional_CGraphicsPreset_connect');
 late final _CStatefulChannel_COptional_CGraphicsPresetConnect = _CStatefulChannel_COptional_CGraphicsPresetConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_COptional_CGraphicsPreset,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CGraphicsPreset, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CGraphicsPreset, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58811,14 +59254,18 @@ late final _CStatefulChannel_CUniverseDrawingModeConnectPtr = _lookup<ffi.Native
   _CCancellable Function(
     _CStatefulChannel_CUniverseDrawingMode,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CUniverseDrawingMode_connect');
 late final _CStatefulChannel_CUniverseDrawingModeConnect = _CStatefulChannel_CUniverseDrawingModeConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CUniverseDrawingMode,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CUniverseDrawingMode, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58834,14 +59281,18 @@ late final _CStatefulChannel_CMapThemeConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CStatefulChannel_CMapTheme,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapTheme, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapTheme, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CMapTheme_connect');
 late final _CStatefulChannel_CMapThemeConnect = _CStatefulChannel_CMapThemeConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CMapTheme,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapTheme, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapTheme, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58856,7 +59307,9 @@ late final _CFuture_COptional_CRenderedObjectInfoReceivePtr = _lookup<ffi.Native
     _CFuture_COptional_CRenderedObjectInfo,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CRenderedObjectInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_COptional_CRenderedObjectInfo_receive');
 late final _CFuture_COptional_CRenderedObjectInfoReceive = _CFuture_COptional_CRenderedObjectInfoReceivePtr.asFunction<
@@ -58864,7 +59317,9 @@ late final _CFuture_COptional_CRenderedObjectInfoReceive = _CFuture_COptional_CR
     _CFuture_COptional_CRenderedObjectInfo,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CRenderedObjectInfo, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -58873,6 +59328,43 @@ late final _COptional_CRenderedObjectInfoMakeDefault = _COptional_CRenderedObjec
 
 late final _COptional_CRenderedObjectInfo_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CRenderedObjectInfo)>>('COptional_CRenderedObjectInfo_release');
 late final _COptional_CRenderedObjectInfo_release = _COptional_CRenderedObjectInfo_releasePtr.asFunction<void Function(_COptional_CRenderedObjectInfo)>();
+
+late final _CMapObjectTransformMakeDefaultPtr = _lookup<ffi.NativeFunction<_CMapObjectTransform Function()>>('CMapObjectTransformMakeDefault');
+late final _CMapObjectTransformMakeDefault = _CMapObjectTransformMakeDefaultPtr.asFunction<_CMapObjectTransform Function()>();
+
+
+late final _CMapObjectPreRenderProcessorCpp_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CMapObjectPreRenderProcessorCpp_cg_objectIdentifier');
+late final _CMapObjectPreRenderProcessorCpp_cg_objectIdentifier = _CMapObjectPreRenderProcessorCpp_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
+
+late final _CMapObjectPreRenderProcessorCpp_transforms_CArray_CSimpleMapObject_CBaseCameraPtr = _lookup<ffi.NativeFunction<_CArray_CMapObjectTransform Function(_CMapObjectPreRenderProcessorCpp, _CArray_CSimpleMapObject, _CBaseCamera)>>('CMapObjectPreRenderProcessorCpp_transforms_CArray_CSimpleMapObject_CBaseCamera');
+late final _CMapObjectPreRenderProcessorCpp_transforms_CArray_CSimpleMapObject_CBaseCamera = _CMapObjectPreRenderProcessorCpp_transforms_CArray_CSimpleMapObject_CBaseCameraPtr.asFunction<_CArray_CMapObjectTransform Function(_CMapObjectPreRenderProcessorCpp, _CArray_CSimpleMapObject, _CBaseCamera)>();
+
+late final _CMapObjectPreRenderProcessorCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapObjectPreRenderProcessorCpp_finalize');
+late final _CMapObjectPreRenderProcessorCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapObjectPreRenderProcessorCpp_release');
+late final _CMapObjectPreRenderProcessorCpp_release = _CMapObjectPreRenderProcessorCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+late final _CMapObjectPreRenderProcessorCpp_retainPtr = _lookup<ffi.NativeFunction<_CMapObjectPreRenderProcessorCpp Function(ffi.Pointer<ffi.Void>)>>('CMapObjectPreRenderProcessorCpp_retain');
+late final _CMapObjectPreRenderProcessorCpp_retain = _CMapObjectPreRenderProcessorCpp_retainPtr.asFunction<_CMapObjectPreRenderProcessorCpp Function(ffi.Pointer<ffi.Void>)>();
+late final _CMapObjectPreRenderProcessorCppMakeDefaultPtr = _lookup<ffi.NativeFunction<_CMapObjectPreRenderProcessorCpp Function()>>('CMapObjectPreRenderProcessorCppMakeDefault');
+late final _CMapObjectPreRenderProcessorCppMakeDefault = _CMapObjectPreRenderProcessorCppMakeDefaultPtr.asFunction<_CMapObjectPreRenderProcessorCpp Function()>();
+
+
+late final _CArray_CMapObjectTransformmakeEmptyPtr = _lookup<ffi.NativeFunction<_CArray_CMapObjectTransform Function()>>('CArray_CMapObjectTransform_makeEmpty');
+late final _CArray_CMapObjectTransformmakeEmpty = _CArray_CMapObjectTransformmakeEmptyPtr.asFunction<_CArray_CMapObjectTransform Function()>();
+late final _CArray_CMapObjectTransformaddElementPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CMapObjectTransform, _CMapObjectTransform)>>('CArray_CMapObjectTransform_addElement');
+late final _CArray_CMapObjectTransformaddElement = _CArray_CMapObjectTransformaddElementPtr.asFunction<void Function(_CArray_CMapObjectTransform, _CMapObjectTransform)>();
+late final _forEach_CArray_CMapObjectTransformPtr = _lookup<ffi.NativeFunction<
+  ffi.Void Function(_CArray_CMapObjectTransform, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapObjectTransform)>>)
+>>('CArray_CMapObjectTransform_forEachWithFunctionPointer');
+late final _forEach_CArray_CMapObjectTransform = _forEach_CArray_CMapObjectTransformPtr.asFunction<
+  void Function(_CArray_CMapObjectTransform, ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapObjectTransform)
+>>)>();
+late final _CArray_CMapObjectTransform_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CArray_CMapObjectTransform)>>('CArray_CMapObjectTransform_release');
+late final _CArray_CMapObjectTransform_release = _CArray_CMapObjectTransform_releasePtr.asFunction<void Function(_CArray_CMapObjectTransform)>();
+
+late final _CMapObjectPreRenderProcessorMakeDefaultPtr = _lookup<ffi.NativeFunction<_CMapObjectPreRenderProcessor Function()>>('CMapObjectPreRenderProcessorMakeDefault');
+late final _CMapObjectPreRenderProcessorMakeDefault = _CMapObjectPreRenderProcessorMakeDefaultPtr.asFunction<_CMapObjectPreRenderProcessor Function()>();
+late final _CMapObjectPreRenderProcessor_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMapObjectPreRenderProcessor)>>('CMapObjectPreRenderProcessor_release');
+late final _CMapObjectPreRenderProcessor_release = _CMapObjectPreRenderProcessor_releasePtr.asFunction<void Function(_CMapObjectPreRenderProcessor)>();
 late final _CMapObjectManager_isVisiblePtr = _lookup<ffi.NativeFunction<ffi.Bool Function(_CMapObjectManager)>>('CMapObjectManager_isVisible');
 late final _CMapObjectManager_isVisible = _CMapObjectManager_isVisiblePtr.asFunction<bool Function(_CMapObjectManager)>();
 late final _CMapObjectManager_setVisible_boolPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMapObjectManager, ffi.Bool)>>('CMapObjectManager_setVisible_bool');
@@ -58899,9 +59391,12 @@ late final _CMapObjectManager_removeAllPtr = _lookup<ffi.NativeFunction<ffi.Void
 late final _CMapObjectManager_removeAll = _CMapObjectManager_removeAllPtr.asFunction<void Function(_CMapObjectManager)>();
 late final _CMapObjectManager_clusteringObjects_CCameraPositionPtr = _lookup<ffi.NativeFunction<_CArray_CMapObject Function(_CMapObjectManager, _CCameraPosition)>>('CMapObjectManager_clusteringObjects_CCameraPosition');
 late final _CMapObjectManager_clusteringObjects_CCameraPosition = _CMapObjectManager_clusteringObjects_CCameraPositionPtr.asFunction<_CArray_CMapObject Function(_CMapObjectManager, _CCameraPosition)>();
+late final _CMapObjectManager_setPreRenderProcessor_COptional_CMapObjectPreRenderProcessorPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMapObjectManager, _COptional_CMapObjectPreRenderProcessor)>>('CMapObjectManager_setPreRenderProcessor_COptional_CMapObjectPreRenderProcessor');
+late final _CMapObjectManager_setPreRenderProcessor_COptional_CMapObjectPreRenderProcessor = _CMapObjectManager_setPreRenderProcessor_COptional_CMapObjectPreRenderProcessorPtr.asFunction<void Function(_CMapObjectManager, _COptional_CMapObjectPreRenderProcessor)>();
 late final _CMapObjectManager_C_createWith_CMap_COptional_CStringPtr = _lookup<ffi.NativeFunction<_CMapObjectManager Function(_CMap, _COptional_CString)>>('CMapObjectManager_C_createWith_CMap_COptional_CString');
 late final _CMapObjectManager_C_createWith_CMap_COptional_CString = _CMapObjectManager_C_createWith_CMap_COptional_CStringPtr.asFunction<_CMapObjectManager Function(_CMap, _COptional_CString)>();
 
+late final _CMapObjectManager_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapObjectManager_finalize');
 late final _CMapObjectManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapObjectManager_release');
 late final _CMapObjectManager_release = _CMapObjectManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapObjectManager_retainPtr = _lookup<ffi.NativeFunction<_CMapObjectManager Function(ffi.Pointer<ffi.Void>)>>('CMapObjectManager_retain');
@@ -58910,12 +59405,19 @@ late final _CMapObjectManagerMakeDefaultPtr = _lookup<ffi.NativeFunction<_CMapOb
 late final _CMapObjectManagerMakeDefault = _CMapObjectManagerMakeDefaultPtr.asFunction<_CMapObjectManager Function()>();
 
 
+late final _COptional_CMapObjectPreRenderProcessorMakeDefaultPtr = _lookup<ffi.NativeFunction<_COptional_CMapObjectPreRenderProcessor Function()>>('COptional_CMapObjectPreRenderProcessorMakeDefault');
+late final _COptional_CMapObjectPreRenderProcessorMakeDefault = _COptional_CMapObjectPreRenderProcessorMakeDefaultPtr.asFunction<_COptional_CMapObjectPreRenderProcessor Function()>();
+
+late final _COptional_CMapObjectPreRenderProcessor_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_COptional_CMapObjectPreRenderProcessor)>>('COptional_CMapObjectPreRenderProcessor_release');
+late final _COptional_CMapObjectPreRenderProcessor_release = _COptional_CMapObjectPreRenderProcessor_releasePtr.asFunction<void Function(_COptional_CMapObjectPreRenderProcessor)>();
+
 late final _CSimpleClusterRendererCpp_cg_objectIdentifierPtr = _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>>('CSimpleClusterRendererCpp_cg_objectIdentifier');
 late final _CSimpleClusterRendererCpp_cg_objectIdentifier = _CSimpleClusterRendererCpp_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 late final _CSimpleClusterRendererCpp_renderCluster_CSimpleClusterObjectPtr = _lookup<ffi.NativeFunction<_CSimpleClusterOptions Function(_CSimpleClusterRendererCpp, _CSimpleClusterObject)>>('CSimpleClusterRendererCpp_renderCluster_CSimpleClusterObject');
 late final _CSimpleClusterRendererCpp_renderCluster_CSimpleClusterObject = _CSimpleClusterRendererCpp_renderCluster_CSimpleClusterObjectPtr.asFunction<_CSimpleClusterOptions Function(_CSimpleClusterRendererCpp, _CSimpleClusterObject)>();
 
+late final _CSimpleClusterRendererCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSimpleClusterRendererCpp_finalize');
 late final _CSimpleClusterRendererCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSimpleClusterRendererCpp_release');
 late final _CSimpleClusterRendererCpp_release = _CSimpleClusterRendererCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSimpleClusterRendererCpp_retainPtr = _lookup<ffi.NativeFunction<_CSimpleClusterRendererCpp Function(ffi.Pointer<ffi.Void>)>>('CSimpleClusterRendererCpp_retain');
@@ -58991,6 +59493,7 @@ late final _CSimpleClusterObject_cg_objectIdentifier = _CSimpleClusterObject_cg_
 late final _CSimpleClusterObject_setIcon_COptional_CImagePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CSimpleClusterObject, _COptional_CImage)>>('CSimpleClusterObject_setIcon_COptional_CImage');
 late final _CSimpleClusterObject_setIcon_COptional_CImage = _CSimpleClusterObject_setIcon_COptional_CImagePtr.asFunction<void Function(_CSimpleClusterObject, _COptional_CImage)>();
 
+late final _CSimpleClusterObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSimpleClusterObject_finalize');
 late final _CSimpleClusterObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CSimpleClusterObject_release');
 late final _CSimpleClusterObject_release = _CSimpleClusterObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CSimpleClusterObject_retainPtr = _lookup<ffi.NativeFunction<_CSimpleClusterObject Function(ffi.Pointer<ffi.Void>)>>('CSimpleClusterObject_retain');
@@ -59062,6 +59565,7 @@ late final _CMarker_cg_objectIdentifier = _CMarker_cg_objectIdentifierPtr.asFunc
 late final _CMarker_C_createWith_CMarkerOptionsPtr = _lookup<ffi.NativeFunction<_CResult_CMarker Function(_CMarkerOptions)>>('CMarker_C_createWith_CMarkerOptions');
 late final _CMarker_C_createWith_CMarkerOptions = _CMarker_C_createWith_CMarkerOptionsPtr.asFunction<_CResult_CMarker Function(_CMarkerOptions)>();
 
+late final _CMarker_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMarker_finalize');
 late final _CMarker_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMarker_release');
 late final _CMarker_release = _CMarker_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMarker_retainPtr = _lookup<ffi.NativeFunction<_CMarker Function(ffi.Pointer<ffi.Void>)>>('CMarker_retain');
@@ -59114,6 +59618,7 @@ late final _CModelMapObject_cg_objectIdentifier = _CModelMapObject_cg_objectIden
 late final _CModelMapObject_C_createWith_CModelMapObjectOptionsPtr = _lookup<ffi.NativeFunction<_CResult_CModelMapObject Function(_CModelMapObjectOptions)>>('CModelMapObject_C_createWith_CModelMapObjectOptions');
 late final _CModelMapObject_C_createWith_CModelMapObjectOptions = _CModelMapObject_C_createWith_CModelMapObjectOptionsPtr.asFunction<_CResult_CModelMapObject Function(_CModelMapObjectOptions)>();
 
+late final _CModelMapObject_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CModelMapObject_finalize');
 late final _CModelMapObject_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CModelMapObject_release');
 late final _CModelMapObject_release = _CModelMapObject_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CModelMapObject_retainPtr = _lookup<ffi.NativeFunction<_CModelMapObject Function(ffi.Pointer<ffi.Void>)>>('CModelMapObject_retain');
@@ -59159,6 +59664,7 @@ late final _CCircle_cg_objectIdentifier = _CCircle_cg_objectIdentifierPtr.asFunc
 late final _CCircle_C_createWith_CCircleOptionsPtr = _lookup<ffi.NativeFunction<_CResult_CCircle Function(_CCircleOptions)>>('CCircle_C_createWith_CCircleOptions');
 late final _CCircle_C_createWith_CCircleOptions = _CCircle_C_createWith_CCircleOptionsPtr.asFunction<_CResult_CCircle Function(_CCircleOptions)>();
 
+late final _CCircle_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCircle_finalize');
 late final _CCircle_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCircle_release');
 late final _CCircle_release = _CCircle_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCircle_retainPtr = _lookup<ffi.NativeFunction<_CCircle Function(ffi.Pointer<ffi.Void>)>>('CCircle_retain');
@@ -59211,6 +59717,7 @@ late final _CPolygon_cg_objectIdentifier = _CPolygon_cg_objectIdentifierPtr.asFu
 late final _CPolygon_C_createWith_CPolygonOptionsPtr = _lookup<ffi.NativeFunction<_CResult_CPolygon Function(_CPolygonOptions)>>('CPolygon_C_createWith_CPolygonOptions');
 late final _CPolygon_C_createWith_CPolygonOptions = _CPolygon_C_createWith_CPolygonOptionsPtr.asFunction<_CResult_CPolygon Function(_CPolygonOptions)>();
 
+late final _CPolygon_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPolygon_finalize');
 late final _CPolygon_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPolygon_release');
 late final _CPolygon_release = _CPolygon_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPolygon_retainPtr = _lookup<ffi.NativeFunction<_CPolygon Function(ffi.Pointer<ffi.Void>)>>('CPolygon_retain');
@@ -59284,6 +59791,7 @@ late final _CPolyline_cg_objectIdentifier = _CPolyline_cg_objectIdentifierPtr.as
 late final _CPolyline_C_createWith_CPolylineOptionsPtr = _lookup<ffi.NativeFunction<_CResult_CPolyline Function(_CPolylineOptions)>>('CPolyline_C_createWith_CPolylineOptions');
 late final _CPolyline_C_createWith_CPolylineOptions = _CPolyline_C_createWith_CPolylineOptionsPtr.asFunction<_CResult_CPolyline Function(_CPolylineOptions)>();
 
+late final _CPolyline_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPolyline_finalize');
 late final _CPolyline_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPolyline_release');
 late final _CPolyline_release = _CPolyline_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPolyline_retainPtr = _lookup<ffi.NativeFunction<_CPolyline Function(ffi.Pointer<ffi.Void>)>>('CPolyline_retain');
@@ -59334,6 +59842,7 @@ late final _CMyLocationControlModel_onClicked = _CMyLocationControlModel_onClick
 late final _CMyLocationControlModel_C_createWith_CMapPtr = _lookup<ffi.NativeFunction<_CMyLocationControlModel Function(_CMap)>>('CMyLocationControlModel_C_createWith_CMap');
 late final _CMyLocationControlModel_C_createWith_CMap = _CMyLocationControlModel_C_createWith_CMapPtr.asFunction<_CMyLocationControlModel Function(_CMap)>();
 
+late final _CMyLocationControlModel_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMyLocationControlModel_finalize');
 late final _CMyLocationControlModel_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMyLocationControlModel_release');
 late final _CMyLocationControlModel_release = _CMyLocationControlModel_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMyLocationControlModel_retainPtr = _lookup<ffi.NativeFunction<_CMyLocationControlModel Function(ffi.Pointer<ffi.Void>)>>('CMyLocationControlModel_retain');
@@ -59354,14 +59863,18 @@ late final _CStatefulChannel_CCameraFollowStateConnectPtr = _lookup<ffi.NativeFu
   _CCancellable Function(
     _CStatefulChannel_CCameraFollowState,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraFollowState, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraFollowState, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CCameraFollowState_connect');
 late final _CStatefulChannel_CCameraFollowStateConnect = _CStatefulChannel_CCameraFollowStateConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CCameraFollowState,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraFollowState, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CCameraFollowState, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -59377,14 +59890,18 @@ late final _CStatefulChannel_CLocationQualityConnectPtr = _lookup<ffi.NativeFunc
   _CCancellable Function(
     _CStatefulChannel_CLocationQuality,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CLocationQuality, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CLocationQuality, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CLocationQuality_connect');
 late final _CStatefulChannel_CLocationQualityConnect = _CStatefulChannel_CLocationQualityConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CLocationQuality,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CLocationQuality, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CLocationQuality, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 late final _CCompassControlModel_bearingChannelPtr = _lookup<ffi.NativeFunction<_CStatefulChannel_CBearing Function(_CCompassControlModel)>>('CCompassControlModel_bearingChannel');
@@ -59400,6 +59917,7 @@ late final _CCompassControlModel_onClicked = _CCompassControlModel_onClickedPtr.
 late final _CCompassControlModel_C_createWith_CMapPtr = _lookup<ffi.NativeFunction<_CCompassControlModel Function(_CMap)>>('CCompassControlModel_C_createWith_CMap');
 late final _CCompassControlModel_C_createWith_CMap = _CCompassControlModel_C_createWith_CMapPtr.asFunction<_CCompassControlModel Function(_CMap)>();
 
+late final _CCompassControlModel_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCompassControlModel_finalize');
 late final _CCompassControlModel_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCompassControlModel_release');
 late final _CCompassControlModel_release = _CCompassControlModel_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCompassControlModel_retainPtr = _lookup<ffi.NativeFunction<_CCompassControlModel Function(ffi.Pointer<ffi.Void>)>>('CCompassControlModel_retain');
@@ -59420,14 +59938,18 @@ late final _CStatefulChannel_CBearingConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CStatefulChannel_CBearing,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CBearing, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CBearing, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CBearing_connect');
 late final _CStatefulChannel_CBearingConnect = _CStatefulChannel_CBearingConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CBearing,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CBearing, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CBearing, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -59444,6 +59966,7 @@ late final _CZoomControlModel_setPressed_CZoomControlButton_bool = _CZoomControl
 late final _CZoomControlModel_C_createWith_CMapPtr = _lookup<ffi.NativeFunction<_CZoomControlModel Function(_CMap)>>('CZoomControlModel_C_createWith_CMap');
 late final _CZoomControlModel_C_createWith_CMap = _CZoomControlModel_C_createWith_CMapPtr.asFunction<_CZoomControlModel Function(_CMap)>();
 
+late final _CZoomControlModel_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CZoomControlModel_finalize');
 late final _CZoomControlModel_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CZoomControlModel_release');
 late final _CZoomControlModel_release = _CZoomControlModel_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CZoomControlModel_retainPtr = _lookup<ffi.NativeFunction<_CZoomControlModel Function(ffi.Pointer<ffi.Void>)>>('CZoomControlModel_retain');
@@ -59473,6 +59996,7 @@ late final _CRasterTileSource_setOpacity_COpacity = _CRasterTileSource_setOpacit
 late final _CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplatePtr = _lookup<ffi.NativeFunction<_CRasterTileSource Function(_CContext, _CString, _CRasterUrlTemplate)>>('CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplate');
 late final _CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplate = _CRasterTileSource_C_createWith_CContext_CString_CRasterUrlTemplatePtr.asFunction<_CRasterTileSource Function(_CContext, _CString, _CRasterUrlTemplate)>();
 
+late final _CRasterTileSource_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRasterTileSource_finalize');
 late final _CRasterTileSource_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRasterTileSource_release');
 late final _CRasterTileSource_release = _CRasterTileSource_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRasterTileSource_retainPtr = _lookup<ffi.NativeFunction<_CRasterTileSource Function(ffi.Pointer<ffi.Void>)>>('CRasterTileSource_retain');
@@ -59493,6 +60017,7 @@ late final _CParkingControlModel_toggleParkingsVisibility = _CParkingControlMode
 late final _CParkingControlModel_C_createWith_CMapPtr = _lookup<ffi.NativeFunction<_CParkingControlModel Function(_CMap)>>('CParkingControlModel_C_createWith_CMap');
 late final _CParkingControlModel_C_createWith_CMap = _CParkingControlModel_C_createWith_CMapPtr.asFunction<_CParkingControlModel Function(_CMap)>();
 
+late final _CParkingControlModel_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CParkingControlModel_finalize');
 late final _CParkingControlModel_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CParkingControlModel_release');
 late final _CParkingControlModel_release = _CParkingControlModel_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CParkingControlModel_retainPtr = _lookup<ffi.NativeFunction<_CParkingControlModel Function(ffi.Pointer<ffi.Void>)>>('CParkingControlModel_retain');
@@ -59525,6 +60050,7 @@ late final _CPackedMapState_S_fromMap_CMap = _CPackedMapState_S_fromMap_CMapPtr.
 late final _CPackedMapState_toBytesPtr = _lookup<ffi.NativeFunction<_CData Function(_CPackedMapState)>>('CPackedMapState_toBytes');
 late final _CPackedMapState_toBytes = _CPackedMapState_toBytesPtr.asFunction<_CData Function(_CPackedMapState)>();
 
+late final _CPackedMapState_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPackedMapState_finalize');
 late final _CPackedMapState_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPackedMapState_release');
 late final _CPackedMapState_release = _CPackedMapState_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPackedMapState_retainPtr = _lookup<ffi.NativeFunction<_CPackedMapState Function(ffi.Pointer<ffi.Void>)>>('CPackedMapState_retain');
@@ -59599,6 +60125,7 @@ late final _CMapRenderer_waitForLoading = _CMapRenderer_waitForLoadingPtr.asFunc
 late final _CMapRenderer_waitForRenderingPtr = _lookup<ffi.NativeFunction<_CFuture_bool Function(_CMapRenderer)>>('CMapRenderer_waitForRendering');
 late final _CMapRenderer_waitForRendering = _CMapRenderer_waitForRenderingPtr.asFunction<_CFuture_bool Function(_CMapRenderer)>();
 
+late final _CMapRenderer_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapRenderer_finalize');
 late final _CMapRenderer_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapRenderer_release');
 late final _CMapRenderer_release = _CMapRenderer_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapRenderer_retainPtr = _lookup<ffi.NativeFunction<_CMapRenderer Function(ffi.Pointer<ffi.Void>)>>('CMapRenderer_retain');
@@ -59619,14 +60146,18 @@ late final _CStatefulChannel_CFpsConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CStatefulChannel_CFps,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CFps, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CFps, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CFps_connect');
 late final _CStatefulChannel_CFpsConnect = _CStatefulChannel_CFpsConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CFps,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CFps, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CFps, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -59641,7 +60172,9 @@ late final _CFuture_boolReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_bool,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_bool_receive');
 late final _CFuture_boolReceive = _CFuture_boolReceivePtr.asFunction<
@@ -59649,7 +60182,9 @@ late final _CFuture_boolReceive = _CFuture_boolReceivePtr.asFunction<
     _CFuture_bool,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -59664,7 +60199,9 @@ late final _CFuture_CImageDataReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CImageData,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CImageData, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CImageData_receive');
 late final _CFuture_CImageDataReceive = _CFuture_CImageDataReceivePtr.asFunction<
@@ -59672,7 +60209,9 @@ late final _CFuture_CImageDataReceive = _CFuture_CImageDataReceivePtr.asFunction
     _CFuture_CImageData,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CImageData, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -59727,6 +60266,7 @@ late final _CScalingGestureSettings_cg_objectIdentifierPtr = _lookup<ffi.NativeF
 late final _CScalingGestureSettings_cg_objectIdentifier = _CScalingGestureSettings_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CScalingGestureSettings_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CScalingGestureSettings_finalize');
 late final _CScalingGestureSettings_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CScalingGestureSettings_release');
 late final _CScalingGestureSettings_release = _CScalingGestureSettings_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CScalingGestureSettings_retainPtr = _lookup<ffi.NativeFunction<_CScalingGestureSettings Function(ffi.Pointer<ffi.Void>)>>('CScalingGestureSettings_retain');
@@ -59763,6 +60303,7 @@ late final _CRotationGestureSettings_cg_objectIdentifierPtr = _lookup<ffi.Native
 late final _CRotationGestureSettings_cg_objectIdentifier = _CRotationGestureSettings_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CRotationGestureSettings_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRotationGestureSettings_finalize');
 late final _CRotationGestureSettings_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRotationGestureSettings_release');
 late final _CRotationGestureSettings_release = _CRotationGestureSettings_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRotationGestureSettings_retainPtr = _lookup<ffi.NativeFunction<_CRotationGestureSettings Function(ffi.Pointer<ffi.Void>)>>('CRotationGestureSettings_retain');
@@ -59783,6 +60324,7 @@ late final _CMultiTouchGestureSettings_cg_objectIdentifierPtr = _lookup<ffi.Nati
 late final _CMultiTouchGestureSettings_cg_objectIdentifier = _CMultiTouchGestureSettings_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CMultiTouchGestureSettings_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMultiTouchGestureSettings_finalize');
 late final _CMultiTouchGestureSettings_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMultiTouchGestureSettings_release');
 late final _CMultiTouchGestureSettings_release = _CMultiTouchGestureSettings_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMultiTouchGestureSettings_retainPtr = _lookup<ffi.NativeFunction<_CMultiTouchGestureSettings Function(ffi.Pointer<ffi.Void>)>>('CMultiTouchGestureSettings_retain');
@@ -59811,6 +60353,7 @@ late final _CTiltGestureSettings_cg_objectIdentifierPtr = _lookup<ffi.NativeFunc
 late final _CTiltGestureSettings_cg_objectIdentifier = _CTiltGestureSettings_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CTiltGestureSettings_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTiltGestureSettings_finalize');
 late final _CTiltGestureSettings_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTiltGestureSettings_release');
 late final _CTiltGestureSettings_release = _CTiltGestureSettings_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CTiltGestureSettings_retainPtr = _lookup<ffi.NativeFunction<_CTiltGestureSettings Function(ffi.Pointer<ffi.Void>)>>('CTiltGestureSettings_retain');
@@ -59831,6 +60374,7 @@ late final _CCommonGestureSettings_cg_objectIdentifierPtr = _lookup<ffi.NativeFu
 late final _CCommonGestureSettings_cg_objectIdentifier = _CCommonGestureSettings_cg_objectIdentifierPtr.asFunction<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>();
 
 
+late final _CCommonGestureSettings_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCommonGestureSettings_finalize');
 late final _CCommonGestureSettings_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CCommonGestureSettings_release');
 late final _CCommonGestureSettings_release = _CCommonGestureSettings_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CCommonGestureSettings_retainPtr = _lookup<ffi.NativeFunction<_CCommonGestureSettings Function(ffi.Pointer<ffi.Void>)>>('CCommonGestureSettings_retain');
@@ -59865,6 +60409,7 @@ late final _CGestureManager_gestureEnabled_CTransformGesture = _CGestureManager_
 late final _CGestureManager_setMutuallyExclusiveGestures_CArray_COptionSet_CTransformGesturePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CGestureManager, _CArray_COptionSet_CTransformGesture)>>('CGestureManager_setMutuallyExclusiveGestures_CArray_COptionSet_CTransformGesture');
 late final _CGestureManager_setMutuallyExclusiveGestures_CArray_COptionSet_CTransformGesture = _CGestureManager_setMutuallyExclusiveGestures_CArray_COptionSet_CTransformGesturePtr.asFunction<void Function(_CGestureManager, _CArray_COptionSet_CTransformGesture)>();
 
+late final _CGestureManager_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGestureManager_finalize');
 late final _CGestureManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CGestureManager_release');
 late final _CGestureManager_release = _CGestureManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CGestureManager_retainPtr = _lookup<ffi.NativeFunction<_CGestureManager Function(ffi.Pointer<ffi.Void>)>>('CGestureManager_retain');
@@ -59915,6 +60460,7 @@ late final _CMapGestureRecognizer_cancel = _CMapGestureRecognizer_cancelPtr.asFu
 late final _CMapGestureRecognizer_onDevicePpiChanged_CDevicePpiPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMapGestureRecognizer, _CDevicePpi)>>('CMapGestureRecognizer_onDevicePpiChanged_CDevicePpi');
 late final _CMapGestureRecognizer_onDevicePpiChanged_CDevicePpi = _CMapGestureRecognizer_onDevicePpiChanged_CDevicePpiPtr.asFunction<void Function(_CMapGestureRecognizer, _CDevicePpi)>();
 
+late final _CMapGestureRecognizer_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapGestureRecognizer_finalize');
 late final _CMapGestureRecognizer_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapGestureRecognizer_release');
 late final _CMapGestureRecognizer_release = _CMapGestureRecognizer_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapGestureRecognizer_retainPtr = _lookup<ffi.NativeFunction<_CMapGestureRecognizer Function(ffi.Pointer<ffi.Void>)>>('CMapGestureRecognizer_retain');
@@ -59933,14 +60479,18 @@ late final _CChannel_CDragBeginDataConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CChannel_CDragBeginData,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CDragBeginData, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CDragBeginData, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CChannel_CDragBeginData_connect');
 late final _CChannel_CDragBeginDataConnect = _CChannel_CDragBeginDataConnectPtr.asFunction<
   _CCancellable Function(
     _CChannel_CDragBeginData,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CDragBeginData, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CDragBeginData, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -59954,14 +60504,18 @@ late final _CChannel_CScreenPointConnectPtr = _lookup<ffi.NativeFunction<
   _CCancellable Function(
     _CChannel_CScreenPoint,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CScreenPoint, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CScreenPoint, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CChannel_CScreenPoint_connect');
 late final _CChannel_CScreenPointConnect = _CChannel_CScreenPointConnectPtr.asFunction<
   _CCancellable Function(
     _CChannel_CScreenPoint,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CScreenPoint, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CScreenPoint, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -59981,6 +60535,7 @@ late final _CMapRenderedObjectObserver_cg_objectIdentifier = _CMapRenderedObject
 late final _CMapRenderedObjectObserver_S_create_CMap_CMapGestureRecognizerPtr = _lookup<ffi.NativeFunction<_CMapRenderedObjectObserver Function(_CMap, _CMapGestureRecognizer)>>('CMapRenderedObjectObserver_S_create_CMap_CMapGestureRecognizer');
 late final _CMapRenderedObjectObserver_S_create_CMap_CMapGestureRecognizer = _CMapRenderedObjectObserver_S_create_CMap_CMapGestureRecognizerPtr.asFunction<_CMapRenderedObjectObserver Function(_CMap, _CMapGestureRecognizer)>();
 
+late final _CMapRenderedObjectObserver_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapRenderedObjectObserver_finalize');
 late final _CMapRenderedObjectObserver_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapRenderedObjectObserver_release');
 late final _CMapRenderedObjectObserver_release = _CMapRenderedObjectObserver_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapRenderedObjectObserver_retainPtr = _lookup<ffi.NativeFunction<_CMapRenderedObjectObserver Function(ffi.Pointer<ffi.Void>)>>('CMapRenderedObjectObserver_retain');
@@ -59999,14 +60554,18 @@ late final _CChannel_CArray_CRenderedObjectInfoConnectPtr = _lookup<ffi.NativeFu
   _CCancellable Function(
     _CChannel_CArray_CRenderedObjectInfo,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CChannel_CArray_CRenderedObjectInfo_connect');
 late final _CChannel_CArray_CRenderedObjectInfoConnect = _CChannel_CArray_CRenderedObjectInfoConnectPtr.asFunction<
   _CCancellable Function(
     _CChannel_CArray_CRenderedObjectInfo,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CRenderedObjectInfo, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 late final _CMapController_mapPtr = _lookup<ffi.NativeFunction<_CMap Function(_CMapController)>>('CMapController_map');
@@ -60024,6 +60583,7 @@ late final _CMapController_cg_objectIdentifier = _CMapController_cg_objectIdenti
 late final _CMapController_S_create_CContext_CMapControllerOptionsPtr = _lookup<ffi.NativeFunction<_CFuture_CMapController Function(_CContext, _CMapControllerOptions)>>('CMapController_S_create_CContext_CMapControllerOptions');
 late final _CMapController_S_create_CContext_CMapControllerOptions = _CMapController_S_create_CContext_CMapControllerOptionsPtr.asFunction<_CFuture_CMapController Function(_CContext, _CMapControllerOptions)>();
 
+late final _CMapController_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapController_finalize');
 late final _CMapController_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapController_release');
 late final _CMapController_release = _CMapController_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapController_retainPtr = _lookup<ffi.NativeFunction<_CMapController Function(ffi.Pointer<ffi.Void>)>>('CMapController_retain');
@@ -60043,7 +60603,9 @@ late final _CFuture_CMapControllerReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CMapController,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapController, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CMapController_receive');
 late final _CFuture_CMapControllerReceive = _CFuture_CMapControllerReceivePtr.asFunction<
@@ -60051,7 +60613,9 @@ late final _CFuture_CMapControllerReceive = _CFuture_CMapControllerReceivePtr.as
     _CFuture_CMapController,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMapController, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -60063,6 +60627,7 @@ late final _CMapControllerRegistry_S_put_CMapController = _CMapControllerRegistr
 late final _CMapControllerRegistry_S_take_CMapIdPtr = _lookup<ffi.NativeFunction<_COptional_CMapController Function(_CMapId)>>('CMapControllerRegistry_S_take_CMapId');
 late final _CMapControllerRegistry_S_take_CMapId = _CMapControllerRegistry_S_take_CMapIdPtr.asFunction<_COptional_CMapController Function(_CMapId)>();
 
+late final _CMapControllerRegistry_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapControllerRegistry_finalize');
 late final _CMapControllerRegistry_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapControllerRegistry_release');
 late final _CMapControllerRegistry_release = _CMapControllerRegistry_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapControllerRegistry_retainPtr = _lookup<ffi.NativeFunction<_CMapControllerRegistry Function(ffi.Pointer<ffi.Void>)>>('CMapControllerRegistry_retain');
@@ -60095,6 +60660,7 @@ late final _CMapSurfaceProvider_resizeSurface_CScreenSize = _CMapSurfaceProvider
 late final _CMapSurfaceProvider_setActive_boolPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CMapSurfaceProvider, ffi.Bool)>>('CMapSurfaceProvider_setActive_bool');
 late final _CMapSurfaceProvider_setActive_bool = _CMapSurfaceProvider_setActive_boolPtr.asFunction<void Function(_CMapSurfaceProvider, bool)>();
 
+late final _CMapSurfaceProvider_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapSurfaceProvider_finalize');
 late final _CMapSurfaceProvider_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapSurfaceProvider_release');
 late final _CMapSurfaceProvider_release = _CMapSurfaceProvider_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapSurfaceProvider_retainPtr = _lookup<ffi.NativeFunction<_CMapSurfaceProvider Function(ffi.Pointer<ffi.Void>)>>('CMapSurfaceProvider_retain');
@@ -60149,6 +60715,7 @@ late final _CMapBuilder_createMap_CContext = _CMapBuilder_createMap_CContextPtr.
 late final _CMapBuilder_C_createPtr = _lookup<ffi.NativeFunction<_CMapBuilder Function()>>('CMapBuilder_C_create');
 late final _CMapBuilder_C_create = _CMapBuilder_C_createPtr.asFunction<_CMapBuilder Function()>();
 
+late final _CMapBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapBuilder_finalize');
 late final _CMapBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CMapBuilder_release');
 late final _CMapBuilder_release = _CMapBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CMapBuilder_retainPtr = _lookup<ffi.NativeFunction<_CMapBuilder Function(ffi.Pointer<ffi.Void>)>>('CMapBuilder_retain');
@@ -60174,7 +60741,9 @@ late final _CFuture_CMapReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CMap,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMap, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CMap_receive');
 late final _CFuture_CMapReceive = _CFuture_CMapReceivePtr.asFunction<
@@ -60182,7 +60751,9 @@ late final _CFuture_CMapReceive = _CFuture_CMapReceivePtr.asFunction<
     _CFuture_CMap,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CMap, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -60198,6 +60769,7 @@ late final _CStyleBuilder_loadStyle_CFile = _CStyleBuilder_loadStyle_CFilePtr.as
 late final _CStyleBuilder_C_createWith_CContextPtr = _lookup<ffi.NativeFunction<_CStyleBuilder Function(_CContext)>>('CStyleBuilder_C_createWith_CContext');
 late final _CStyleBuilder_C_createWith_CContext = _CStyleBuilder_C_createWith_CContextPtr.asFunction<_CStyleBuilder Function(_CContext)>();
 
+late final _CStyleBuilder_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyleBuilder_finalize');
 late final _CStyleBuilder_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CStyleBuilder_release');
 late final _CStyleBuilder_release = _CStyleBuilder_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CStyleBuilder_retainPtr = _lookup<ffi.NativeFunction<_CStyleBuilder Function(ffi.Pointer<ffi.Void>)>>('CStyleBuilder_retain');
@@ -60217,7 +60789,9 @@ late final _CFuture_CStyleReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CStyle,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CStyle, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CStyle_receive');
 late final _CFuture_CStyleReceive = _CFuture_CStyleReceivePtr.asFunction<
@@ -60225,7 +60799,9 @@ late final _CFuture_CStyleReceive = _CFuture_CStyleReceivePtr.asFunction<
     _CFuture_CStyle,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CStyle, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -60246,6 +60822,7 @@ late final _CHttpCacheManager_S_get_CContext = _CHttpCacheManager_S_get_CContext
 late final _CHttpCacheManager_clearPtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CHttpCacheManager)>>('CHttpCacheManager_clear');
 late final _CHttpCacheManager_clear = _CHttpCacheManager_clearPtr.asFunction<void Function(_CHttpCacheManager)>();
 
+late final _CHttpCacheManager_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CHttpCacheManager_finalize');
 late final _CHttpCacheManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CHttpCacheManager_release');
 late final _CHttpCacheManager_release = _CHttpCacheManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CHttpCacheManager_retainPtr = _lookup<ffi.NativeFunction<_CHttpCacheManager Function(ffi.Pointer<ffi.Void>)>>('CHttpCacheManager_retain');
@@ -60266,6 +60843,7 @@ late final _CLocaleChangeNotifier_cg_objectIdentifier = _CLocaleChangeNotifier_c
 late final _CLocaleChangeNotifier_changed_CArray_CLocalePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CLocaleChangeNotifier, _CArray_CLocale)>>('CLocaleChangeNotifier_changed_CArray_CLocale');
 late final _CLocaleChangeNotifier_changed_CArray_CLocale = _CLocaleChangeNotifier_changed_CArray_CLocalePtr.asFunction<void Function(_CLocaleChangeNotifier, _CArray_CLocale)>();
 
+late final _CLocaleChangeNotifier_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocaleChangeNotifier_finalize');
 late final _CLocaleChangeNotifier_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocaleChangeNotifier_release');
 late final _CLocaleChangeNotifier_release = _CLocaleChangeNotifier_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CLocaleChangeNotifier_retainPtr = _lookup<ffi.NativeFunction<_CLocaleChangeNotifier Function(ffi.Pointer<ffi.Void>)>>('CLocaleChangeNotifier_retain');
@@ -60303,6 +60881,7 @@ late final _CLocaleManager_S_instance_CContext = _CLocaleManager_S_instance_CCon
 late final _CLocaleManager_overrideLocales_CArray_CLocalePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CLocaleManager, _CArray_CLocale)>>('CLocaleManager_overrideLocales_CArray_CLocale');
 late final _CLocaleManager_overrideLocales_CArray_CLocale = _CLocaleManager_overrideLocales_CArray_CLocalePtr.asFunction<void Function(_CLocaleManager, _CArray_CLocale)>();
 
+late final _CLocaleManager_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocaleManager_finalize');
 late final _CLocaleManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocaleManager_release');
 late final _CLocaleManager_release = _CLocaleManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CLocaleManager_retainPtr = _lookup<ffi.NativeFunction<_CLocaleManager Function(ffi.Pointer<ffi.Void>)>>('CLocaleManager_retain');
@@ -60323,14 +60902,18 @@ late final _CStatefulChannel_CArray_CLocaleConnectPtr = _lookup<ffi.NativeFuncti
   _CCancellable Function(
     _CStatefulChannel_CArray_CLocale,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CLocale, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CLocale, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CArray_CLocale_connect');
 late final _CStatefulChannel_CArray_CLocaleConnect = _CStatefulChannel_CArray_CLocaleConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CArray_CLocale,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CLocale, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CArray_CLocale, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -60348,6 +60931,7 @@ late final _CPlatformLocaleManagerCpp_setSystemLocalesChangeNotifier_CLocaleChan
 late final _CPlatformLocaleManagerCpp_overrideLocales_CArray_CLocalePtr = _lookup<ffi.NativeFunction<ffi.Void Function(_CPlatformLocaleManagerCpp, _CArray_CLocale)>>('CPlatformLocaleManagerCpp_overrideLocales_CArray_CLocale');
 late final _CPlatformLocaleManagerCpp_overrideLocales_CArray_CLocale = _CPlatformLocaleManagerCpp_overrideLocales_CArray_CLocalePtr.asFunction<void Function(_CPlatformLocaleManagerCpp, _CArray_CLocale)>();
 
+late final _CPlatformLocaleManagerCpp_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPlatformLocaleManagerCpp_finalize');
 late final _CPlatformLocaleManagerCpp_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CPlatformLocaleManagerCpp_release');
 late final _CPlatformLocaleManagerCpp_release = _CPlatformLocaleManagerCpp_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CPlatformLocaleManagerCpp_retainPtr = _lookup<ffi.NativeFunction<_CPlatformLocaleManagerCpp Function(ffi.Pointer<ffi.Void>)>>('CPlatformLocaleManagerCpp_retain');
@@ -60379,6 +60963,7 @@ late final _CLocationService_C_createWith_CContext = _CLocationService_C_createW
 late final _CLocationService_C_createWith_CContext_CDesiredAccuracyPtr = _lookup<ffi.NativeFunction<_CLocationService Function(_CContext, _CDesiredAccuracy)>>('CLocationService_C_createWith_CContext_CDesiredAccuracy');
 late final _CLocationService_C_createWith_CContext_CDesiredAccuracy = _CLocationService_C_createWith_CContext_CDesiredAccuracyPtr.asFunction<_CLocationService Function(_CContext, _CDesiredAccuracy)>();
 
+late final _CLocationService_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocationService_finalize');
 late final _CLocationService_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CLocationService_release');
 late final _CLocationService_release = _CLocationService_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CLocationService_retainPtr = _lookup<ffi.NativeFunction<_CLocationService Function(ffi.Pointer<ffi.Void>)>>('CLocationService_retain');
@@ -60399,14 +60984,18 @@ late final _CStatefulChannel_COptional_CLocationConnectPtr = _lookup<ffi.NativeF
   _CCancellable Function(
     _CStatefulChannel_COptional_CLocation,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CLocation, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CLocation, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_COptional_CLocation_connect');
 late final _CStatefulChannel_COptional_CLocationConnect = _CStatefulChannel_COptional_CLocationConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_COptional_CLocation,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CLocation, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_COptional_CLocation, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -60436,6 +61025,7 @@ late final _CRoadEventManager_createOther_CGeoPoint_COptionSet_CLane_CString = _
 late final _CRoadEventManager_createRoadWorks_CGeoPoint_COptionSet_CLane_CStringPtr = _lookup<ffi.NativeFunction<_CFuture_CAddEventResult Function(_CRoadEventManager, _CGeoPoint, _COptionSet_CLane, _CString)>>('CRoadEventManager_createRoadWorks_CGeoPoint_COptionSet_CLane_CString');
 late final _CRoadEventManager_createRoadWorks_CGeoPoint_COptionSet_CLane_CString = _CRoadEventManager_createRoadWorks_CGeoPoint_COptionSet_CLane_CStringPtr.asFunction<_CFuture_CAddEventResult Function(_CRoadEventManager, _CGeoPoint, _COptionSet_CLane, _CString)>();
 
+late final _CRoadEventManager_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventManager_finalize');
 late final _CRoadEventManager_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CRoadEventManager_release');
 late final _CRoadEventManager_release = _CRoadEventManager_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CRoadEventManager_retainPtr = _lookup<ffi.NativeFunction<_CRoadEventManager Function(ffi.Pointer<ffi.Void>)>>('CRoadEventManager_retain');
@@ -60455,7 +61045,9 @@ late final _CFuture_CAddEventResultReceivePtr = _lookup<ffi.NativeFunction<
     _CFuture_CAddEventResult,
     ffi.Int64,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CAddEventResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CFuture_CAddEventResult_receive');
 late final _CFuture_CAddEventResultReceive = _CFuture_CAddEventResultReceivePtr.asFunction<
@@ -60463,7 +61055,9 @@ late final _CFuture_CAddEventResultReceive = _CFuture_CAddEventResultReceivePtr.
     _CFuture_CAddEventResult,
     int,
     ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CAddEventResult, ffi.Int64)>>,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CError, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -60486,6 +61080,7 @@ late final _CTrafficScoreProvider_C_createWith_CMap = _CTrafficScoreProvider_C_c
 late final _CTrafficScoreProvider_C_createWith_CContext_CGeoPointPtr = _lookup<ffi.NativeFunction<_CTrafficScoreProvider Function(_CContext, _CGeoPoint)>>('CTrafficScoreProvider_C_createWith_CContext_CGeoPoint');
 late final _CTrafficScoreProvider_C_createWith_CContext_CGeoPoint = _CTrafficScoreProvider_C_createWith_CContext_CGeoPointPtr.asFunction<_CTrafficScoreProvider Function(_CContext, _CGeoPoint)>();
 
+late final _CTrafficScoreProvider_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTrafficScoreProvider_finalize');
 late final _CTrafficScoreProvider_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTrafficScoreProvider_release');
 late final _CTrafficScoreProvider_release = _CTrafficScoreProvider_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CTrafficScoreProvider_retainPtr = _lookup<ffi.NativeFunction<_CTrafficScoreProvider Function(ffi.Pointer<ffi.Void>)>>('CTrafficScoreProvider_retain');
@@ -60506,14 +61101,18 @@ late final _CStatefulChannel_CTrafficScoreConnectPtr = _lookup<ffi.NativeFunctio
   _CCancellable Function(
     _CStatefulChannel_CTrafficScore,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CTrafficScore, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CTrafficScore, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CTrafficScore_connect');
 late final _CStatefulChannel_CTrafficScoreConnect = _CStatefulChannel_CTrafficScoreConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CTrafficScore,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CTrafficScore, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CTrafficScore, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
@@ -60536,6 +61135,7 @@ late final _CTrafficControlModel_onClicked = _CTrafficControlModel_onClickedPtr.
 late final _CTrafficControlModel_C_createWith_CMapPtr = _lookup<ffi.NativeFunction<_CTrafficControlModel Function(_CMap)>>('CTrafficControlModel_C_createWith_CMap');
 late final _CTrafficControlModel_C_createWith_CMap = _CTrafficControlModel_C_createWith_CMapPtr.asFunction<_CTrafficControlModel Function(_CMap)>();
 
+late final _CTrafficControlModel_finalizePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTrafficControlModel_finalize');
 late final _CTrafficControlModel_releasePtr = _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>('CTrafficControlModel_release');
 late final _CTrafficControlModel_release = _CTrafficControlModel_releasePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 late final _CTrafficControlModel_retainPtr = _lookup<ffi.NativeFunction<_CTrafficControlModel Function(ffi.Pointer<ffi.Void>)>>('CTrafficControlModel_retain');
@@ -60556,14 +61156,18 @@ late final _CStatefulChannel_CTrafficControlStateConnectPtr = _lookup<ffi.Native
   _CCancellable Function(
     _CStatefulChannel_CTrafficControlState,
     ffi.Int64,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CTrafficControlState, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CTrafficControlState, ffi.Int64)>>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>
   )
 >>('CStatefulChannel_CTrafficControlState_connect');
 late final _CStatefulChannel_CTrafficControlStateConnect = _CStatefulChannel_CTrafficControlStateConnectPtr.asFunction<
   _CCancellable Function(
     _CStatefulChannel_CTrafficControlState,
     int,
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CTrafficControlState, ffi.Int64)>>
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(_CTrafficControlState, ffi.Int64)>>,
+    int,
+    ffi.Pointer<ffi.Void>
   )
 >();
 
